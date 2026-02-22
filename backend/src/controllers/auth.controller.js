@@ -294,66 +294,110 @@ export const isAuthenticated = async(req, res) => {
 
 
 // SEND PASSWORD RESET OTP
-export const sendResetOtp = async(req, res) => {
-  const {email} = req.body;
+export const sendResetOtp = async (req, res) => {
+  const { email } = req.body;
 
-  if(!email){
-    return res.status(400).json({ success: false, message: "Email is required" });
+  if (!email) {
+    return res.status(400).json({
+      success: false,
+      message: "Email is required",
+    });
   }
 
   try {
-    const user = await User.findOne({email});
-    if(!user){
-      return res.status(404).json({success: false, message: "User not found"})
+    const user = await User.findOne({ email: email.toLowerCase().trim() });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
     }
+
     const otp = String(Math.floor(100000 + Math.random() * 900000));
+
     user.resetOtp = otp;
     user.resetOtpExpireAt = Date.now() + 10 * 60 * 1000;
     await user.save();
-    const mailOptions = {
+
+    await transporter.sendMail({
       from: `"Smart Health System" <${process.env.SENDER_EMAIL}>`,
       to: user.email,
       subject: "Password Reset OTP",
       html: `
-        <p>Your OTP to reset password is is: <b>${otp}</b></p>
+        <h2>Password Reset</h2>
+        <p>Your OTP is: <b>${otp}</b></p>
         <p>This OTP expires in 10 minutes.</p>
       `,
-    }; 
-    await transporter.sendMail(mailOptions);
-    return res.status(200).json({ success: true, message: "Password reset OTP sent to email" });
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Password reset OTP sent",
+    });
 
   } catch (error) {
-    return res.status(400).json({ success: false, message: error.message });
+    console.error(error);
+    return res.status(500).json({
+      success: false,
+      message: "Server Error",
+    });
   }
-}
+};
 
 // RESET USER PASSWORD
-export const resetPassword = async(req, res) => {
-  const {email, otp, newPassword} = req.body;
-  if(!email || !otp || !newPassword){
-    return res.status(400).json({ success: false, message: "Please provide all required fields" });
+export const resetPassword = async (req, res) => {
+  const { email, otp, newPassword } = req.body;
+
+  if (!email || !otp || !newPassword) {
+    return res.status(400).json({
+      success: false,
+      message: "All fields are required",
+    });
   }
 
   try {
-    const user = await User.findOne({email});
-    if(!user){
-      return res.status(404).json({success: false, message: "User not found"});
+    const user = await User.findOne({ email: email.toLowerCase().trim() });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
     }
-    if(user.resetOtp === "" || user.resetOtp !== otp){
-      return res.status(400).json({success: false, message: "Invalid OTP"});
+
+    if (user.resetOtp !== otp) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid OTP",
+      });
     }
-    if(user.resetOtpExpireAt < Date.now()){
-      return res.status(400).json({success: false, message: "OTP Expired"});
+
+    if (user.resetOtpExpireAt < Date.now()) {
+      return res.status(400).json({
+        success: false,
+        message: "OTP Expired",
+      });
     }
-    const hashedPassword = await(bcrypt.hash(newPassword, 10));
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
     user.password = hashedPassword;
-    user.resetOtp = '';
+    user.resetOtp = "";
     user.resetOtpExpireAt = null;
+
     await user.save();
 
-    return res.status(200).json({ success: true, message: "Password reset successful" });
+    return res.status(200).json({
+      success: true,
+      message: "Password reset successful",
+    });
 
   } catch (error) {
-    return res.status(400).json({ success: false, message: error.message });
+    console.error(error);
+    return res.status(500).json({
+      success: false,
+      message: "Server Error",
+    });
   }
-}
+};
