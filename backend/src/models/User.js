@@ -32,7 +32,7 @@ const userSchema = new mongoose.Schema(
     isAccountVerified: {
       type: Boolean,
       default: false,
-    }, 
+    },
 
     // Password Reset
     resetOtp: {
@@ -41,6 +41,23 @@ const userSchema = new mongoose.Schema(
     },
     resetOtpExpireAt: {
       type: Date,
+    },
+    age: {
+      type: Number
+    },
+    gender: {
+      type: String,
+      enum: ["Male", "Female", "Other"]
+    },
+    weight: {
+      type: Number
+    },
+    height: {
+      type: Number
+    },
+    profileCompleted: {
+      type: Boolean,
+      default: false
     },
   },
   { timestamps: true }
