@@ -20,10 +20,11 @@ const Login = () => {
     const { isLoggedIn } = useContext(AppContext);
     useEffect(() => {
         if (isLoggedIn) {
-            navigate("/dashboard");
+            navigate("/app/dashboard", {replace: true});
         }
-    }, [isLoggedIn]);
+    }, [isLoggedIn, navigate]);
 
+    
     const handleAuthSuccess = async () => {
         setIsLoggedIn(true);
         const user = await getUserData();
@@ -33,7 +34,7 @@ const Login = () => {
         } else if (!user?.profileCompleted) {
             navigate("/complete-profile");
         } else {
-            navigate("/dashboard");
+            navigate("/app/dashboard");
         }
     };
 

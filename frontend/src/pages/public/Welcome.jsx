@@ -19,7 +19,7 @@ const Welcome = () => {
   // 🔥 If already logged in → skip welcome
   useEffect(() => {
     if (isLoggedIn) {
-      navigate("/dashboard");
+      navigate("/app/dashboard");
     }
   }, [isLoggedIn]);
 

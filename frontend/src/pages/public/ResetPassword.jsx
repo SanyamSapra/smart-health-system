@@ -1,10 +1,13 @@
-import React, { useContext, useState } from "react";
+import React, { useContext, useState, useRef } from "react";
 import { AppContext } from "../../context/AppContext";
 import axios from "axios";
+import { toast } from "react-toastify";
+import { useNavigate } from "react-router-dom";
+import { motion } from "framer-motion";
 
 const ResetPassword = () => {
   const { backendUrl } = useContext(AppContext);
-  axios.defaults.withCredentials = true;
+  const navigate = useNavigate();
 
   const [email, setEmail] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -12,134 +15,191 @@ const ResetPassword = () => {
   const [loading, setLoading] = useState(false);
   const [otp, setOtp] = useState(["", "", "", "", "", ""]);
 
-  // STEP 1: Send OTP
+  const inputRefs = useRef([]);
+
+  /* ---------------- EMAIL STEP ---------------- */
   const handleEmailSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
-
     try {
       await axios.post(`${backendUrl}/api/auth/send-reset-otp`, { email });
+      toast.success("OTP sent to your email");
       setStep(2);
     } catch (error) {
-      alert(error.response?.data?.message || "Error sending OTP");
+      toast.error(error.response?.data?.message || "Failed to send OTP");
     }
-
     setLoading(false);
   };
 
-  // STEP 2: Move to password page
-  const handleOtpSubmit = (e) => {
-    e.preventDefault();
-    setStep(3);
+  /* ---------------- OTP HANDLING ---------------- */
+
+  const handleOtpChange = (value, index) => {
+    if (!/^\d?$/.test(value)) return;
+
+    const newOtp = [...otp];
+    newOtp[index] = value;
+    setOtp(newOtp);
+
+    if (value && index < 5) {
+      inputRefs.current[index + 1].focus();
+    }
   };
 
-  // STEP 3: Reset password
-  const handleNewPasswordSubmit = async (e) => {
+  const handleOtpBackspace = (e, index) => {
+    if (e.key === "Backspace" && !otp[index] && index > 0) {
+      inputRefs.current[index - 1].focus();
+    }
+  };
+
+  const handleOtpPaste = (e) => {
+    const pasteData = e.clipboardData.getData("text").trim();
+    if (!/^\d{6}$/.test(pasteData)) return;
+
+    const pasteArray = pasteData.split("");
+    setOtp(pasteArray);
+  };
+
+  const handleOtpSubmit = (e) => {
     e.preventDefault();
 
-    const finalOtp = otp.join("");
-
-    if (finalOtp.length !== 6) {
-      alert("Please enter complete 6-digit OTP");
+    if (otp.join("").length !== 6) {
+      toast.error("Enter complete 6-digit OTP");
       return;
     }
 
+    setStep(3);
+  };
+
+  /* ---------------- NEW PASSWORD STEP ---------------- */
+
+  const handleNewPasswordSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
     try {
       await axios.post(`${backendUrl}/api/auth/reset-password`, {
         email,
-        otp: finalOtp,
+        otp: otp.join(""),
         newPassword,
       });
 
-      alert("Password Reset Successful");
-
-      // Reset state
-      setStep(1);
-      setEmail("");
-      setNewPassword("");
-      setOtp(["", "", "", "", "", ""]);
-
+      toast.success("Password reset successful");
+      navigate("/login");
     } catch (error) {
-      alert(error.response?.data?.message || "Reset failed");
+      toast.error(error.response?.data?.message || "Reset failed");
     }
+    setLoading(false);
   };
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-200 to-purple-400">
-      <div className="bg-slate-900 p-8 rounded-lg shadow-lg w-96 text-sm">
+    <div className="min-h-screen flex">
 
-        {step === 1 && (
-          <form onSubmit={handleEmailSubmit}>
-            <h1 className="text-white text-2xl text-center mb-4">
-              Reset Password
-            </h1>
+      {/* LEFT PANEL */}
+      <div className="hidden md:flex w-1/2 bg-gradient-to-b from-blue-600 to-indigo-800 items-center justify-center">
+        <div className="text-white px-12">
+          <h1 className="text-4xl font-bold mb-4">
+            Smart Health System
+          </h1>
+          <p className="text-lg opacity-90">
+            Secure. Reliable. Personalized.
+          </p>
+        </div>
+      </div>
 
-            <input
-              type="email"
-              placeholder="Enter Email"
-              className="w-full mb-4 p-2 rounded bg-[#333A5C] text-white"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-            />
+      {/* RIGHT PANEL */}
+      <div className="flex w-full md:w-1/2 items-center justify-center bg-gray-100">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+          className="bg-white p-8 rounded-2xl shadow-xl w-96"
+        >
 
-            <button className="w-full py-2 bg-indigo-600 rounded-full text-white">
-              {loading ? "Sending..." : "Send OTP"}
-            </button>
-          </form>
-        )}
+          {/* STEP 1 */}
+          {step === 1 && (
+            <form onSubmit={handleEmailSubmit}>
+              <h2 className="text-2xl font-semibold text-center mb-6">
+                Reset Password
+              </h2>
 
-        {step === 2 && (
-          <form onSubmit={handleOtpSubmit}>
-            <h1 className="text-white text-2xl text-center mb-4">
-              Enter OTP
-            </h1>
+              <input
+                type="email"
+                placeholder="Email Address"
+                className="w-full mb-5 px-4 py-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+              />
 
-            <div className="flex justify-between mb-6">
-              {otp.map((digit, index) => (
-                <input
-                  key={index}
-                  maxLength="1"
-                  value={digit}
-                  onChange={(e) => {
-                    const value = e.target.value.replace(/\D/, "");
-                    const newOtp = [...otp];
-                    newOtp[index] = value;
-                    setOtp(newOtp);
-                  }}
-                  className="w-10 h-10 text-center bg-[#333A5C] text-white rounded"
-                  required
-                />
-              ))}
-            </div>
+              <button
+                disabled={loading}
+                className="w-full py-3 bg-blue-600 hover:bg-blue-700 transition text-white rounded-xl font-medium"
+              >
+                {loading ? "Sending..." : "Send OTP"}
+              </button>
+            </form>
+          )}
 
-            <button className="w-full py-2 bg-indigo-600 rounded-full text-white">
-              Continue
-            </button>
-          </form>
-        )}
+          {/* STEP 2 - MODERN OTP */}
+          {step === 2 && (
+            <form onSubmit={handleOtpSubmit}>
+              <h2 className="text-2xl font-semibold text-center mb-6">
+                Verify OTP
+              </h2>
 
-        {step === 3 && (
-          <form onSubmit={handleNewPasswordSubmit}>
-            <h1 className="text-white text-2xl text-center mb-4">
-              New Password
-            </h1>
+              <div
+                className="flex justify-between mb-6"
+                onPaste={handleOtpPaste}
+              >
+                {otp.map((digit, index) => (
+                  <input
+                    key={index}
+                    ref={(el) => (inputRefs.current[index] = el)}
+                    type="text"
+                    maxLength="1"
+                    value={digit}
+                    onChange={(e) =>
+                      handleOtpChange(e.target.value, index)
+                    }
+                    onKeyDown={(e) =>
+                      handleOtpBackspace(e, index)
+                    }
+                    className="w-12 h-12 text-center text-lg font-semibold border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 shadow-sm transition-all duration-200"
+                  />
+                ))}
+              </div>
 
-            <input
-              type="password"
-              placeholder="Enter New Password"
-              className="w-full mb-4 p-2 rounded bg-[#333A5C] text-white"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              required
-            />
+              <button className="w-full py-3 bg-blue-600 hover:bg-blue-700 transition text-white rounded-xl font-medium">
+                Continue
+              </button>
+            </form>
+          )}
 
-            <button className="w-full py-2 bg-indigo-600 rounded-full text-white">
-              Reset Password
-            </button>
-          </form>
-        )}
+          {/* STEP 3 */}
+          {step === 3 && (
+            <form onSubmit={handleNewPasswordSubmit}>
+              <h2 className="text-2xl font-semibold text-center mb-6">
+                Set New Password
+              </h2>
 
+              <input
+                type="password"
+                placeholder="New Password"
+                className="w-full mb-5 px-4 py-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                required
+              />
+
+              <button
+                disabled={loading}
+                className="w-full py-3 bg-blue-600 hover:bg-blue-700 transition text-white rounded-xl font-medium"
+              >
+                {loading ? "Resetting..." : "Reset Password"}
+              </button>
+            </form>
+          )}
+
+        </motion.div>
       </div>
     </div>
   );

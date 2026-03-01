@@ -9,23 +9,23 @@ const VerifyEmail = () => {
   const { backendUrl, userData, getUserData } = useContext(AppContext);
   const navigate = useNavigate();
 
-  const [otp, setOtp] = useState("");
+  const [otp, setOtp] = useState(["", "", "", "", "", ""]);
   const [loading, setLoading] = useState(false);
   const [resendLoading, setResendLoading] = useState(false);
   const [cooldown, setCooldown] = useState(0);
 
-  // Redirect verified users away from this page
+  // Redirect verified users
   useEffect(() => {
     if (userData?.isAccountVerified) {
       if (!userData.profileCompleted) {
         navigate("/complete-profile");
       } else {
-        navigate("/dashboard");
+        navigate("/app/dashboard");
       }
     }
-  }, [userData]);
+  }, [userData, navigate]);
 
-  // Countdown timer for resend button
+  // Cooldown countdown
   useEffect(() => {
     if (cooldown > 0) {
       const timer = setTimeout(() => {
@@ -35,14 +35,52 @@ const VerifyEmail = () => {
     }
   }, [cooldown]);
 
+  // Handle OTP change
+  const handleOtpChange = (value, index) => {
+    if (!/^[0-9]?$/.test(value)) return;
+
+    const newOtp = [...otp];
+    newOtp[index] = value;
+    setOtp(newOtp);
+
+    // Move forward automatically
+    if (value && index < 5) {
+      document.getElementById(`otp-${index + 1}`).focus();
+    }
+  };
+
+  // Backspace navigation
+  const handleOtpBackspace = (e, index) => {
+    if (e.key === "Backspace" && !otp[index] && index > 0) {
+      document.getElementById(`otp-${index - 1}`).focus();
+    }
+  };
+
+  // Paste full OTP support
+  const handlePaste = (e) => {
+    const pasteData = e.clipboardData.getData("text").trim();
+    if (!/^\d{6}$/.test(pasteData)) return;
+
+    const pasteArray = pasteData.split("");
+    setOtp(pasteArray);
+  };
+
+  // Auto submit when OTP complete
+  useEffect(() => {
+    if (otp.every((digit) => digit !== "")) {
+      handleVerify();
+    }
+    // eslint-disable-next-line
+  }, [otp]);
+
   const handleVerify = async (e) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
     setLoading(true);
 
     try {
       const { data } = await axios.post(
         `${backendUrl}/api/auth/verify-account`,
-        { otp },
+        { otp: otp.join("") },
         { withCredentials: true }
       );
 
@@ -71,7 +109,7 @@ const VerifyEmail = () => {
 
       if (data.success) {
         toast.success("OTP sent again");
-        setCooldown(60); // 60 seconds cooldown
+        setCooldown(60);
       } else {
         toast.error(data.message);
       }
@@ -100,17 +138,33 @@ const VerifyEmail = () => {
           Enter the 6-digit OTP sent to your email.
         </p>
 
-        <form onSubmit={handleVerify} className="space-y-4">
+        <form onSubmit={handleVerify} className="space-y-6">
 
-          <input
-            type="text"
-            maxLength={6}
-            placeholder="Enter OTP"
-            className="w-full p-3 border rounded-lg text-center tracking-widest text-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            value={otp}
-            onChange={(e) => setOtp(e.target.value)}
-            required
-          />
+          {/* OTP INPUTS */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.3 }}
+            className="flex justify-between gap-2"
+            onPaste={handlePaste}
+          >
+            {otp.map((digit, index) => (
+              <input
+                key={index}
+                id={`otp-${index}`}
+                type="text"
+                maxLength="1"
+                value={digit}
+                onChange={(e) =>
+                  handleOtpChange(e.target.value, index)
+                }
+                onKeyDown={(e) =>
+                  handleOtpBackspace(e, index)
+                }
+                className="w-12 h-12 text-center text-lg font-semibold border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 shadow-sm transition-all duration-200"
+              />
+            ))}
+          </motion.div>
 
           <button
             type="submit"
@@ -122,11 +176,12 @@ const VerifyEmail = () => {
 
         </form>
 
-        <div className="text-center mt-4">
+        {/* RESEND SECTION */}
+        <div className="text-center mt-6">
           <button
             onClick={handleResend}
             disabled={cooldown > 0 || resendLoading}
-            className="text-blue-600 text-sm"
+            className="text-blue-600 text-sm font-medium"
           >
             {cooldown > 0
               ? `Resend OTP in ${cooldown}s`

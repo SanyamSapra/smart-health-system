@@ -20,7 +20,7 @@ const CompleteProfile = () => {
   // Prevent access if already completed
   useEffect(() => {
     if (userData?.profileCompleted) {
-      navigate("/dashboard");
+      navigate("/app/dashboard");
     }
   }, [userData]);
 
@@ -38,7 +38,7 @@ const CompleteProfile = () => {
       if (data.success) {
         await getUserData();
         toast.success("Profile completed!");
-        navigate("/dashboard");
+        navigate("/app/dashboard");
       } else {
         toast.error(data.message);
       }
