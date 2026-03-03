@@ -14,6 +14,7 @@ const userSchema = new mongoose.Schema(
       unique: true,
       lowercase: true,
       trim: true,
+      index: true
     },
 
     password: {
@@ -42,23 +43,54 @@ const userSchema = new mongoose.Schema(
     resetOtpExpireAt: {
       type: Date,
     },
-    age: {
-      type: Number
-    },
+
     gender: {
       type: String,
       enum: ["Male", "Female", "Other"]
     },
-    weight: {
-      type: Number
-    },
+
     height: {
       type: Number
     },
+
     profileCompleted: {
       type: Boolean,
       default: false
     },
+
+    dateOfBirth: {
+      type: Date
+    },
+
+    bloodGroup: {
+      type: String,
+      enum: ["A+", "A-", "B+", "B-", "O+", "O-", "AB+", "AB-"]
+    },
+
+    activityLevel: {
+      type: String,
+      enum: ["Sedentary", "Light", "Moderate", "Active"]
+    },
+
+    dietType: {
+      type: String,
+      enum: ["Vegetarian", "Non-Vegetarian", "Vegan"]
+    },
+
+    smoking: {
+      type: Boolean,
+      default: false
+    },
+
+    alcohol: {
+      type: Boolean,
+      default: false
+    },
+
+    medicalConditions: [{
+      type: [String],
+      default: []
+    }]
   },
   { timestamps: true }
 );

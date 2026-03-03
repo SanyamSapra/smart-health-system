@@ -1,4 +1,5 @@
 import User from "../models/User.js";
+import HealthLog from "../models/HealthLog.js";
 
 export const getUserData = async (req, res) => {
     try {
@@ -36,37 +37,67 @@ export const getUserData = async (req, res) => {
 
 
 export const completeProfile = async (req, res) => {
-    try {
-        const { age, gender, weight, height } = req.body;
+  try {
+    const userId = req.userId;
 
-        const user = await User.findById(req.userId);
+    const {
+      dateOfBirth,
+      gender,
+      height,
+      bloodGroup,
+      activityLevel,
+      dietType,
+      smoking,
+      alcohol,
+      medicalConditions,
+      weight   // 👈 initial weight
+    } = req.body;
 
-        if (!user) {
-            res.clearCookie("token");
-            return res.status(401).json({
-                success: false,
-                message: "Session expired. Please login again."
-            });
-        }
-
-        user.age = age;
-        user.gender = gender;
-        user.weight = weight;
-        user.height = height;
-        user.profileCompleted = true;
-
-        await user.save();
-
-        return res.status(200).json({
-            success: true,
-            message: "Profile completed successfully",
-            profileCompleted: true
-        });
-
-    } catch (error) {
-        return res.status(500).json({
-            success: false,
-            message: error.message
-        });
+    // Basic validation
+    if (!dateOfBirth || !gender || !height || !weight) {
+      return res.status(400).json({
+        success: false,
+        message: "Required fields missing"
+      });
     }
+
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+    }
+
+    // Update user profile fields
+    user.dateOfBirth = dateOfBirth;
+    user.gender = gender;
+    user.height = height;
+    user.bloodGroup = bloodGroup;
+    user.activityLevel = activityLevel;
+    user.dietType = dietType;
+    user.smoking = smoking;
+    user.alcohol = alcohol;
+    user.medicalConditions = medicalConditions;
+    user.profileCompleted = true;
+
+    await user.save();
+
+    await HealthLog.create({
+      user: userId,
+      weight
+    });
+
+    res.json({
+      success: true,
+      message: "Profile completed successfully"
+    });
+
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
 };
