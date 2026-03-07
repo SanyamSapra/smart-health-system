@@ -1,14 +1,17 @@
 import { Outlet } from "react-router-dom";
-import Navbar from "./Navbar";
+import Sidebar from "./Sidebar";
 
 const Layout = () => {
   return (
-    <>
-      <Navbar />
-      <div className="main-content">
+    <div className="flex h-screen overflow-hidden bg-slate-50">
+
+      <Sidebar />
+
+      <div className="flex-1 overflow-y-auto">
         <Outlet />
       </div>
-    </>
+
+    </div>
   );
 };
 

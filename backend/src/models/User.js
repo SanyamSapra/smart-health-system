@@ -14,7 +14,7 @@ const userSchema = new mongoose.Schema(
       unique: true,
       lowercase: true,
       trim: true,
-      index: true
+      index: true,
     },
 
     password: {
@@ -22,75 +22,81 @@ const userSchema = new mongoose.Schema(
       required: true,
     },
 
-    // Email Verification
+    // Email verification fields
     verifyOtp: {
       type: String,
       default: "",
     },
     verifyOtpExpireAt: {
       type: Date,
+      default: null,
     },
     isAccountVerified: {
       type: Boolean,
       default: false,
     },
 
-    // Password Reset
+    // Password reset fields
     resetOtp: {
       type: String,
       default: "",
     },
     resetOtpExpireAt: {
       type: Date,
+      default: null,
+    },
+
+    // Profile completion flag
+    profileCompleted: {
+      type: Boolean,
+      default: false,
     },
 
     gender: {
       type: String,
-      enum: ["Male", "Female", "Other"]
-    },
-
-    height: {
-      type: Number
-    },
-
-    profileCompleted: {
-      type: Boolean,
-      default: false
+      enum: ["Male", "Female", "Other"],
     },
 
     dateOfBirth: {
-      type: Date
+      type: Date,
+    },
+
+    height: {
+      type: Number,
+      min: [50, "Height seems too low"],
+      max: [300, "Height seems too high"],
     },
 
     bloodGroup: {
       type: String,
-      enum: ["A+", "A-", "B+", "B-", "O+", "O-", "AB+", "AB-"]
+      enum: ["A+", "A-", "B+", "B-", "O+", "O-", "AB+", "AB-"],
     },
 
     activityLevel: {
       type: String,
-      enum: ["Sedentary", "Light", "Moderate", "Active"]
+      enum: ["Sedentary", "Light", "Moderate", "Active"],
     },
 
     dietType: {
       type: String,
-      enum: ["Vegetarian", "Non-Vegetarian", "Vegan"]
+      enum: ["Vegetarian", "Non-Vegetarian", "Vegan"],
     },
 
     smoking: {
       type: Boolean,
-      default: false
+      default: false,
     },
 
     alcohol: {
       type: Boolean,
-      default: false
+      default: false,
     },
 
-    medicalConditions: [{
+    // Stores user health conditions like diabetes, asthma etc.
+    medicalConditions: {
       type: [String],
-      default: []
-    }]
+      default: [],
+    },
   },
   { timestamps: true }
 );
