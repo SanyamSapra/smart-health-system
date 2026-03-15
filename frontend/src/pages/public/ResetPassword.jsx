@@ -57,13 +57,27 @@ const ResetPassword = () => {
   };
 
   /* ── STEP 2: Verify OTP ─────────────────────────────────────────────────── */
-  const handleOtpSubmit = (e) => {
+  const handleOtpSubmit = async (e) => {
     e.preventDefault();
     if (otp.join("").length !== 6) {
       toast.error("Enter the complete 6-digit OTP");
       return;
     }
-    setStep(3);
+
+    setLoading(true);
+    try {
+      await api.post("/auth/verify-reset-otp", {
+        email,
+        otp: otp.join(""),
+      });
+      setStep(3);
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Invalid OTP");
+      setOtp(["", "", "", "", "", ""]);
+      inputRefs.current[0]?.focus();
+    } finally {
+      setLoading(false);
+    }
   };
 
   /* ── STEP 3: Set new password ───────────────────────────────────────────── */
@@ -193,8 +207,12 @@ const ResetPassword = () => {
                   />
                 ))}
               </div>
-              <button className="w-full py-3 bg-blue-600 hover:bg-blue-700 transition text-white rounded-xl font-medium flex items-center justify-center gap-2">
-                <ShieldCheck size={15} /> Continue
+              <button
+                disabled={loading}
+                className="w-full py-3 bg-blue-600 hover:bg-blue-700 transition text-white rounded-xl font-medium disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                <ShieldCheck size={15} />
+                {loading ? "Verifying..." : "Continue"}
               </button>
             </form>
           )}

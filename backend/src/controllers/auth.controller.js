@@ -64,7 +64,6 @@ export const registerUser = async (req, res) => {
       verifyOtpExpireAt: Date.now() + 10 * 60 * 1000,
     });
 
-    // Send verification OTP via email
     await transporter.sendMail({
       from: `"Smart Health System" <${process.env.SENDER_EMAIL}>`,
       to: user.email,
@@ -74,7 +73,6 @@ export const registerUser = async (req, res) => {
              <p>This OTP expires in 10 minutes.</p>`,
     });
 
-    // Token issued so user can verify email immediately
     const token = signToken(user._id);
     setAuthCookie(res, token);
 
@@ -110,7 +108,6 @@ export const login = async (req, res) => {
 
     const user = await User.findOne({ email });
     if (!user) {
-      // Same error message for email/password to avoid revealing which one is wrong
       return res
         .status(401)
         .json({ success: false, message: "Invalid credentials" });
@@ -273,6 +270,45 @@ export const sendResetOtp = async (req, res) => {
     });
 
     return res.json({ success: true, message: "Reset OTP sent" });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// Verify reset OTP 
+export const verifyResetOtp = async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+
+    if (!email || !otp)
+      return res
+        .status(400)
+        .json({ success: false, message: "Email and OTP are required" });
+
+    const user = await User.findOne({ email: email.toLowerCase().trim() });
+
+    if (!user)
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found" });
+
+    if (user.resetOtpExpireAt < Date.now())
+      return res
+        .status(400)
+        .json({ success: false, message: "OTP expired" });
+
+    const hashedInput = crypto
+      .createHash("sha256")
+      .update(String(otp))
+      .digest("hex");
+
+    if (user.resetOtp !== hashedInput)
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid OTP" });
+
+    return res.json({ success: true, message: "OTP verified" });
+
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
