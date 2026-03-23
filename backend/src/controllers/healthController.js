@@ -1,5 +1,6 @@
 import User from "../models/User.js";
 import HealthLog from "../models/HealthLog.js";
+import mongoose from "mongoose";
 
 // Get the latest health metrics for the dashboard
 export const getLatestHealthSummary = async (req, res) => {
@@ -83,7 +84,7 @@ export const addHealthLog = async (req, res) => {
 
     const { weight, systolicBP, diastolicBP, sugarLevel, notes } = req.body;
 
-    if (!weight && !systolicBP && !diastolicBP && !sugarLevel) {
+    if (weight == null && systolicBP == null && diastolicBP == null && sugarLevel == null) {
       return res.status(400).json({
         success: false,
         message: "At least one health metric is required",
@@ -145,6 +146,9 @@ export const getHealthHistory = async (req, res) => {
 // Update an existing health log
 export const updateHealthLog = async (req, res) => {
   try {
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return res.status(400).json({ success: false, message: "Invalid log ID" });
+    }
     const { weight, systolicBP, diastolicBP, sugarLevel, notes } = req.body;
 
     // Only update fields that were provided
@@ -188,6 +192,9 @@ export const updateHealthLog = async (req, res) => {
 // Delete a health log
 export const deleteHealthLog = async (req, res) => {
   try {
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return res.status(400).json({ success: false, message: "Invalid log ID" });
+    }
     const log = await HealthLog.findOneAndDelete({
       _id: req.params.id,
       user: req.userId,

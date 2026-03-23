@@ -5,28 +5,25 @@ import { toast } from "react-toastify";
 export const AppContext = createContext();
 
 export const AppContextProvider = ({ children }) => {
-
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userData, setUserData] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Fetch currently logged-in user's data
   const getUserData = async () => {
     try {
       const { data } = await api.get("/user/me");
 
       if (data.success) {
         setUserData(data.userData);
+        setIsLoggedIn(true);
         return data.userData;
       }
 
       return null;
-
     } catch (error) {
-      if (
-        error.response?.status === 401 ||
-        error.response?.status === 404
-      ) {
+      // 401 means not logged in — not an error worth toasting
+      if (error.response?.status === 401) {
+        setIsLoggedIn(false);
         setUserData(null);
         return null;
       }
@@ -36,30 +33,21 @@ export const AppContextProvider = ({ children }) => {
     }
   };
 
-  // Check authentication status when the app loads
-  const checkAuthStatus = async () => {
+  // Single call on app load — replaces the old checkAuthStatus + getUserData chain
+  useEffect(() => {
+    getUserData().finally(() => setLoading(false));
+  }, []);
+
+  const logout = async () => {
     try {
-      const { data } = await api.get("/auth/is-auth");
-
-      if (data.success) {
-        const user = await getUserData();
-        setIsLoggedIn(!!user);
-      } else {
-        setIsLoggedIn(false);
-      }
-
-    } catch (error) {
-      // If request fails, assume user is not logged in
+      await api.post("/auth/logout", {});
+    } catch {
+      // still clear local state even if the request fails
+    } finally {
       setIsLoggedIn(false);
       setUserData(null);
-    } finally {
-      setLoading(false);
     }
   };
-
-  useEffect(() => {
-    checkAuthStatus();
-  }, []);
 
   const value = {
     isLoggedIn,
@@ -67,6 +55,7 @@ export const AppContextProvider = ({ children }) => {
     userData,
     setUserData,
     getUserData,
+    logout, // shared logout function — fixes Fix 6
     loading,
   };
 

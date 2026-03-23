@@ -4,6 +4,7 @@ import { AppContext } from "../../context/AppContext";
 import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
 import { motion } from "framer-motion";
+import { calculateAge } from "../../utils/dateUtils";
 import {
   Calendar,
   Ruler,
@@ -79,9 +80,9 @@ const CompleteProfile = () => {
         alcohol,
         medicalConditions: medicalConditions
           ? medicalConditions
-              .split(",")
-              .map((item) => item.trim())
-              .filter(Boolean)
+            .split(",")
+            .map((item) => item.trim())
+            .filter(Boolean)
           : [],
       });
 
@@ -127,6 +128,7 @@ const CompleteProfile = () => {
               type="date"
               className={inputStyle}
               value={dateOfBirth}
+              max={new Date().toISOString().split("T")[0]}
               onChange={(e) => setDateOfBirth(e.target.value)}
               required
             />

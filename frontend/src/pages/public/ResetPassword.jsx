@@ -93,8 +93,7 @@ const ResetPassword = () => {
     try {
       await api.post("/auth/reset-password", {
         email,
-        otp: otp.join(""),
-        newPassword,
+        newPassword, // no longer sending otp here
       });
       toast.success("Password reset successful");
       navigate("/login");
@@ -107,8 +106,8 @@ const ResetPassword = () => {
 
   // Step indicator config
   const steps = [
-    { num: 1, icon: Mail,        label: "Email" },
-    { num: 2, icon: KeyRound,    label: "OTP" },
+    { num: 1, icon: Mail, label: "Email" },
+    { num: 2, icon: KeyRound, label: "OTP" },
     { num: 3, icon: ShieldCheck, label: "Password" },
   ];
 
@@ -139,13 +138,12 @@ const ResetPassword = () => {
           <div className="flex items-center justify-center gap-2 mb-7">
             {steps.map(({ num, icon: Icon, label }, i) => (
               <div key={num} className="flex items-center gap-2">
-                <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${
-                  step === num
-                    ? "bg-blue-600 text-white"
-                    : step > num
+                <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${step === num
+                  ? "bg-blue-600 text-white"
+                  : step > num
                     ? "bg-green-100 text-green-600"
                     : "bg-gray-100 text-gray-400"
-                }`}>
+                  }`}>
                   <Icon size={12} />
                   <span>{label}</span>
                 </div>
@@ -181,6 +179,16 @@ const ResetPassword = () => {
                 {loading ? "Sending..." : "Send OTP"}
               </button>
             </form>
+          )}
+
+          {step > 1 && (
+            <button
+              type="button"
+              onClick={() => setStep((s) => s - 1)}
+              className="flex items-center gap-1 text-sm text-gray-400 hover:text-gray-600 mb-4 transition"
+            >
+              ← Back
+            </button>
           )}
 
           {/* STEP 2 — OTP */}

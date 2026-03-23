@@ -1,12 +1,8 @@
 import { useContext, useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { AppContext } from "../../context/AppContext";
-import api from "../../services/api";
 import {
   LayoutDashboard,
-  Bot,
-  FolderOpen,
-  Bell,
   User,
   LogOut,
   ChevronLeft,
@@ -15,31 +11,20 @@ import {
 } from "lucide-react";
 
 const Sidebar = () => {
-  const { userData, setIsLoggedIn, setUserData } = useContext(AppContext);
+  const { userData, logout } = useContext(AppContext);
   const navigate = useNavigate();
   const [collapsed, setCollapsed] = useState(false);
 
   const handleLogout = async () => {
-    try {
-      await api.post("/auth/logout", {});
-      setIsLoggedIn(false);
-      setUserData(null);
-      navigate("/login", { replace: true });
-    } catch (error) {
-      console.error("Logout failed:", error);
-    }
+    await logout();
+    navigate("/login", { replace: true });
   };
 
-  // Sidebar navigation items
   const navItems = [
     { path: "/app/dashboard", icon: LayoutDashboard, label: "Dashboard" },
-    // { path: "/app/chatbot", icon: Bot, label: "AI Assistant" },
-    // { path: "/app/reports", icon: FolderOpen, label: "Reports" },
-    // { path: "/app/reminders", icon: Bell, label: "Reminders" },
     { path: "/app/profile", icon: User, label: "Profile" },
   ];
 
-  // First letter of user's name for avatar
   const avatarLetter = userData?.name?.charAt(0)?.toUpperCase() || "U";
 
   return (
@@ -62,7 +47,7 @@ const Sidebar = () => {
         </button>
       </div>
 
-      {/* User info */}
+      {/* User info — expanded */}
       {!collapsed && (
         <div className="px-4 py-4 border-b border-gray-100">
           <div className="flex items-center gap-3">
@@ -79,7 +64,6 @@ const Sidebar = () => {
             </div>
           </div>
 
-          {/* Email verification warning */}
           {!userData?.isAccountVerified && (
             <div className="mt-2 bg-yellow-50 border border-yellow-200 rounded-lg px-2 py-1 flex items-center gap-1.5">
               <AlertTriangle size={12} className="text-yellow-500 shrink-0" />
@@ -89,7 +73,7 @@ const Sidebar = () => {
         </div>
       )}
 
-      {/* Avatar view when sidebar is collapsed */}
+      {/* Avatar — collapsed */}
       {collapsed && (
         <div className="flex justify-center py-4 border-b border-gray-100">
           <div className="w-9 h-9 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-sm">
@@ -98,7 +82,7 @@ const Sidebar = () => {
         </div>
       )}
 
-      {/* Navigation links */}
+      {/* Nav links */}
       <nav className="flex-1 px-2 py-4 space-y-1 overflow-y-auto">
         {navItems.map((item) => {
           const Icon = item.icon;
@@ -122,7 +106,7 @@ const Sidebar = () => {
         })}
       </nav>
 
-      {/* Logout button */}
+      {/* Logout */}
       <div className="px-2 py-4 border-t border-gray-100">
         <button
           onClick={handleLogout}

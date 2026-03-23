@@ -4,13 +4,13 @@ import api from "../../services/api";
 import { toast } from "react-toastify";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
+import { calculateAge } from "../../utils/dateUtils";
 import {
   User,
   Mail,
   BadgeCheck,
   BadgeAlert,
   Pencil,
-  X,
   Save,
   Activity,
   LogOut,
@@ -23,7 +23,7 @@ import {
   HeartPulse,
 } from "lucide-react";
 
-// Component for showing individual profile details
+// Individual profile detail row
 const ProfileItem = ({ icon: Icon, label, value }) => (
   <div className="flex items-center gap-3 py-2.5 border-b border-gray-50 last:border-0">
     <div className="w-8 h-8 rounded-lg bg-gray-50 flex items-center justify-center flex-shrink-0">
@@ -36,7 +36,7 @@ const ProfileItem = ({ icon: Icon, label, value }) => (
   </div>
 );
 
-// Component for the health metric boxes
+// Health metric summary box
 const HealthCard = ({ label, value, unit, color }) => (
   <div className="bg-gray-50 rounded-xl p-3 text-center">
     <p className="text-xs text-gray-400 mb-1">{label}</p>
@@ -46,14 +46,13 @@ const HealthCard = ({ label, value, unit, color }) => (
 );
 
 const ProfileView = () => {
-  const { userData, getUserData, setIsLoggedIn, setUserData } = useContext(AppContext);
+  const { userData, getUserData, logout } = useContext(AppContext);
   const navigate = useNavigate();
 
   const [healthData, setHealthData] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  // Form state for profile updates
   const [formData, setFormData] = useState({
     height: "",
     bloodGroup: "",
@@ -66,7 +65,7 @@ const ProfileView = () => {
 
   // Fetch latest health summary on mount
   useEffect(() => {
-    const getHealthSummary = async () => {
+    const fetchHealthSummary = async () => {
       try {
         const res = await api.get("/health/latest");
         setHealthData(res.data.data);
@@ -74,10 +73,10 @@ const ProfileView = () => {
         console.error("Could not fetch health stats", err);
       }
     };
-    getHealthSummary();
+    fetchHealthSummary();
   }, []);
 
-  // Sync form state when entering edit mode
+  // Sync form when entering edit mode
   useEffect(() => {
     if (isEditing && userData) {
       setFormData({
@@ -92,25 +91,12 @@ const ProfileView = () => {
     }
   }, [isEditing, userData]);
 
-  // BMI Label logic
   const getBmiStatus = (bmi) => {
     if (!bmi) return { label: null, color: "text-gray-500" };
     if (bmi < 18.5) return { label: "Underweight", color: "text-blue-500" };
     if (bmi < 25) return { label: "Normal", color: "text-green-500" };
     if (bmi < 30) return { label: "Overweight", color: "text-yellow-500" };
     return { label: "Obese", color: "text-red-500" };
-  };
-
-  const calculateAge = (dob) => {
-    if (!dob) return null;
-    const today = new Date();
-    const birthDate = new Date(dob);
-    let age = today.getFullYear() - birthDate.getFullYear();
-    const monthDiff = today.getMonth() - birthDate.getMonth();
-    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
-      age--;
-    }
-    return age;
   };
 
   const handleUpdate = async () => {
@@ -120,7 +106,10 @@ const ProfileView = () => {
         ...formData,
         height: formData.height ? Number(formData.height) : undefined,
         medicalConditions: formData.medicalConditions
-          ? formData.medicalConditions.split(",").map((s) => s.trim()).filter(Boolean)
+          ? formData.medicalConditions
+              .split(",")
+              .map((s) => s.trim())
+              .filter(Boolean)
           : [],
       };
 
@@ -128,7 +117,7 @@ const ProfileView = () => {
 
       if (data.success) {
         toast.success("Profile updated successfully");
-        await getUserData(); 
+        await getUserData();
         setIsEditing(false);
       } else {
         toast.error(data.message);
@@ -141,33 +130,30 @@ const ProfileView = () => {
   };
 
   const handleLogout = async () => {
-    try {
-      await api.post("/auth/logout", {});
-      setIsLoggedIn(false);
-      setUserData(null);
-      navigate("/login", { replace: true });
-    } catch (err) {
-      toast.error("Error logging out");
-    }
+    await logout();
+    navigate("/login", { replace: true });
   };
 
   const age = calculateAge(userData?.dateOfBirth);
   const bmiInfo = getBmiStatus(healthData?.bmi);
 
-  const inputClass = "w-full border border-gray-200 rounded-lg p-2.5 text-sm bg-gray-50 focus:ring-2 focus:ring-blue-300 outline-none";
+  const inputClass =
+    "w-full border border-gray-200 rounded-lg p-2.5 text-sm bg-gray-50 focus:ring-2 focus:ring-blue-300 outline-none";
 
   return (
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-3xl mx-auto space-y-5">
-        
+
         <div>
           <h1 className="text-xl font-bold text-gray-800">My Profile</h1>
-          <p className="text-sm text-gray-400">View and manage your health information</p>
+          <p className="text-sm text-gray-400">
+            View and manage your health information
+          </p>
         </div>
 
-        {/* User Header Section */}
-        <motion.div 
-          initial={{ opacity: 0, y: 10 }} 
+        {/* User header */}
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 flex items-center gap-5"
         >
@@ -176,12 +162,13 @@ const ProfileView = () => {
           </div>
 
           <div className="flex-1">
-            <h2 className="text-lg font-bold text-gray-800">{userData?.name || "User"}</h2>
+            <h2 className="text-lg font-bold text-gray-800">
+              {userData?.name || "User"}
+            </h2>
             <div className="flex items-center gap-1.5 text-sm text-gray-400 mt-0.5">
               <Mail size={13} />
               {userData?.email}
             </div>
-
             <div className="mt-2">
               {userData?.isAccountVerified ? (
                 <span className="inline-flex items-center gap-1 text-xs font-semibold text-green-600 bg-green-50 px-2.5 py-1 rounded-full">
@@ -196,14 +183,16 @@ const ProfileView = () => {
           </div>
 
           <div className="text-right hidden sm:block">
-            <p className="text-sm font-semibold text-gray-700">{userData?.gender || "—"}</p>
+            <p className="text-sm font-semibold text-gray-700">
+              {userData?.gender || "—"}
+            </p>
             {age && <p className="text-xs text-gray-400">{age} years</p>}
           </div>
         </motion.div>
 
-        {/* Recent Stats Summary */}
-        <motion.div 
-          initial={{ opacity: 0 }} 
+        {/* Latest health stats */}
+        <motion.div
+          initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5"
         >
@@ -211,11 +200,14 @@ const ProfileView = () => {
             <Activity size={15} className="text-blue-500" />
             Latest Health Stats
           </h3>
-
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <HealthCard
               label="BMI"
-              value={healthData?.bmi ? `${healthData.bmi} ${bmiInfo.label ? `(${bmiInfo.label})` : ""}` : null}
+              value={
+                healthData?.bmi
+                  ? `${healthData.bmi}${bmiInfo.label ? ` (${bmiInfo.label})` : ""}`
+                  : null
+              }
               color={bmiInfo.color}
             />
             <HealthCard
@@ -226,7 +218,11 @@ const ProfileView = () => {
             />
             <HealthCard
               label="BP"
-              value={healthData?.systolicBP && healthData?.diastolicBP ? `${healthData.systolicBP}/${healthData.diastolicBP}` : null}
+              value={
+                healthData?.systolicBP && healthData?.diastolicBP
+                  ? `${healthData.systolicBP}/${healthData.diastolicBP}`
+                  : null
+              }
               unit="mmHg"
               color="text-red-500"
             />
@@ -239,9 +235,9 @@ const ProfileView = () => {
           </div>
         </motion.div>
 
-        {/* Main Profile Information */}
-        <motion.div 
-          initial={{ opacity: 0 }} 
+        {/* Health profile */}
+        <motion.div
+          initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5"
         >
@@ -253,7 +249,7 @@ const ProfileView = () => {
             {!isEditing ? (
               <button
                 onClick={() => setIsEditing(true)}
-                className="flex items-center gap-1.5 text-xs font-semibold text-blue-600 bg-blue-50 px-3 py-1.5 rounded-lg"
+                className="flex items-center gap-1.5 text-xs font-semibold text-blue-600 bg-blue-50 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition"
               >
                 <Pencil size={12} /> Edit
               </button>
@@ -261,16 +257,17 @@ const ProfileView = () => {
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setIsEditing(false)}
-                  className="text-xs font-semibold text-gray-500 bg-gray-100 px-3 py-1.5 rounded-lg"
+                  className="text-xs font-semibold text-gray-500 bg-gray-100 px-3 py-1.5 rounded-lg hover:bg-gray-200 transition"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleUpdate}
                   disabled={loading}
-                  className="flex items-center gap-1.5 text-xs font-semibold text-white bg-blue-600 px-3 py-1.5 rounded-lg disabled:opacity-50"
+                  className="flex items-center gap-1.5 text-xs font-semibold text-white bg-blue-600 px-3 py-1.5 rounded-lg disabled:opacity-50 hover:bg-blue-700 transition"
                 >
-                  <Save size={12} /> {loading ? "Saving..." : "Save"}
+                  <Save size={12} />
+                  {loading ? "Saving..." : "Save"}
                 </button>
               </div>
             )}
@@ -279,21 +276,50 @@ const ProfileView = () => {
           {!isEditing ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8">
               <div>
-                <ProfileItem icon={Ruler} label="Height" value={userData?.height ? `${userData.height} cm` : null} />
-                <ProfileItem icon={HeartPulse} label="Blood Group" value={userData?.bloodGroup} />
-                <ProfileItem icon={Activity} label="Activity Level" value={userData?.activityLevel} />
+                <ProfileItem
+                  icon={Ruler}
+                  label="Height"
+                  value={userData?.height ? `${userData.height} cm` : null}
+                />
+                <ProfileItem
+                  icon={HeartPulse}
+                  label="Blood Group"
+                  value={userData?.bloodGroup}
+                />
+                <ProfileItem
+                  icon={Activity}
+                  label="Activity Level"
+                  value={userData?.activityLevel}
+                />
               </div>
               <div>
-                <ProfileItem icon={UtensilsCrossed} label="Diet" value={userData?.dietType} />
-                <ProfileItem icon={Cigarette} label="Smoking" value={userData?.smoking ? "Yes" : "No"} />
-                <ProfileItem icon={Wine} label="Alcohol" value={userData?.alcohol ? "Yes" : "No"} />
+                <ProfileItem
+                  icon={UtensilsCrossed}
+                  label="Diet"
+                  value={userData?.dietType}
+                />
+                <ProfileItem
+                  icon={Cigarette}
+                  label="Smoking"
+                  value={userData?.smoking ? "Yes" : "No"}
+                />
+                <ProfileItem
+                  icon={Wine}
+                  label="Alcohol"
+                  value={userData?.alcohol ? "Yes" : "No"}
+                />
               </div>
               {userData?.medicalConditions?.length > 0 && (
                 <div className="sm:col-span-2 mt-4 pt-4 border-t border-gray-50">
-                  <p className="text-xs text-gray-400 font-medium mb-2">Medical Conditions</p>
+                  <p className="text-xs text-gray-400 font-medium mb-2">
+                    Medical Conditions
+                  </p>
                   <div className="flex flex-wrap gap-2">
                     {userData.medicalConditions.map((item, idx) => (
-                      <span key={idx} className="text-xs bg-red-50 text-red-600 font-medium px-2.5 py-1 rounded-full">
+                      <span
+                        key={idx}
+                        className="text-xs bg-red-50 text-red-600 font-medium px-2.5 py-1 rounded-full"
+                      >
                         {item}
                       </span>
                     ))}
@@ -305,53 +331,79 @@ const ProfileView = () => {
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="text-xs text-gray-500 mb-1 block">Height (cm)</label>
+                  <label className="text-xs text-gray-500 mb-1 block">
+                    Height (cm)
+                  </label>
                   <input
                     type="number"
                     className={inputClass}
                     value={formData.height}
-                    onChange={(e) => setFormData({ ...formData, height: e.target.value })}
+                    min="50"
+                    max="300"
+                    onChange={(e) =>
+                      setFormData({ ...formData, height: e.target.value })
+                    }
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-gray-500 mb-1 block">Blood Group</label>
+                  <label className="text-xs text-gray-500 mb-1 block">
+                    Blood Group
+                  </label>
                   <select
                     className={inputClass}
                     value={formData.bloodGroup}
-                    onChange={(e) => setFormData({ ...formData, bloodGroup: e.target.value })}
+                    onChange={(e) =>
+                      setFormData({ ...formData, bloodGroup: e.target.value })
+                    }
                   >
                     <option value="">Select</option>
-                    {["A+", "A-", "B+", "B-", "O+", "O-", "AB+", "AB-"].map((bg) => (
-                      <option key={bg} value={bg}>{bg}</option>
-                    ))}
+                    {["A+", "A-", "B+", "B-", "O+", "O-", "AB+", "AB-"].map(
+                      (bg) => (
+                        <option key={bg} value={bg}>
+                          {bg}
+                        </option>
+                      )
+                    )}
                   </select>
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="text-xs text-gray-500 mb-1 block">Activity Level</label>
+                  <label className="text-xs text-gray-500 mb-1 block">
+                    Activity Level
+                  </label>
                   <select
                     className={inputClass}
                     value={formData.activityLevel}
-                    onChange={(e) => setFormData({ ...formData, activityLevel: e.target.value })}
+                    onChange={(e) =>
+                      setFormData({ ...formData, activityLevel: e.target.value })
+                    }
                   >
                     <option value="">Select</option>
                     {["Sedentary", "Light", "Moderate", "Active"].map((lvl) => (
-                      <option key={lvl} value={lvl}>{lvl}</option>
+                      <option key={lvl} value={lvl}>
+                        {lvl}
+                      </option>
                     ))}
                   </select>
                 </div>
                 <div>
-                  <label className="text-xs text-gray-500 mb-1 block">Diet Type</label>
+                  <label className="text-xs text-gray-500 mb-1 block">
+                    Diet Type
+                  </label>
                   <select
                     className={inputClass}
                     value={formData.dietType}
-                    onChange={(e) => setFormData({ ...formData, dietType: e.target.value })}
+                    onChange={(e) =>
+                      setFormData({ ...formData, dietType: e.target.value })
+                    }
                   >
                     <option value="">Select</option>
                     {["Vegetarian", "Non-Vegetarian", "Vegan"].map((type) => (
-                      <option key={type} value={type}>{type}</option>
+                      <option key={type} value={type}>
+                        {type}
+                      </option>
                     ))}
                   </select>
                 </div>
@@ -362,7 +414,9 @@ const ProfileView = () => {
                   <input
                     type="checkbox"
                     checked={formData.smoking}
-                    onChange={(e) => setFormData({ ...formData, smoking: e.target.checked })}
+                    onChange={(e) =>
+                      setFormData({ ...formData, smoking: e.target.checked })
+                    }
                     className="accent-blue-600"
                   />
                   <span className="text-sm text-gray-600">Smoking</span>
@@ -371,7 +425,9 @@ const ProfileView = () => {
                   <input
                     type="checkbox"
                     checked={formData.alcohol}
-                    onChange={(e) => setFormData({ ...formData, alcohol: e.target.checked })}
+                    onChange={(e) =>
+                      setFormData({ ...formData, alcohol: e.target.checked })
+                    }
                     className="accent-blue-600"
                   />
                   <span className="text-sm text-gray-600">Alcohol</span>
@@ -379,20 +435,28 @@ const ProfileView = () => {
               </div>
 
               <div>
-                <label className="text-xs text-gray-500 mb-1 block">Medical Conditions (comma separated)</label>
+                <label className="text-xs text-gray-500 mb-1 block">
+                  Medical Conditions (comma separated)
+                </label>
                 <input
                   type="text"
                   className={inputClass}
                   value={formData.medicalConditions}
                   placeholder="e.g. Asthma, Diabetes"
-                  onChange={(e) => setFormData({ ...formData, medicalConditions: e.target.value })}
+                  maxLength={200}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      medicalConditions: e.target.value,
+                    })
+                  }
                 />
               </div>
             </div>
           )}
         </motion.div>
 
-        {/* Account Settings */}
+        {/* Account settings */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
           <h3 className="text-sm font-bold text-gray-700 mb-4 flex items-center gap-2">
             <User size={15} className="text-blue-500" />
@@ -401,13 +465,13 @@ const ProfileView = () => {
           <div className="flex flex-col sm:flex-row gap-3">
             <button
               onClick={() => navigate("/reset-password")}
-              className="flex items-center justify-center gap-2 flex-1 px-4 py-2 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50"
+              className="flex items-center justify-center gap-2 flex-1 px-4 py-2 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition"
             >
               <KeyRound size={15} /> Change Password
             </button>
             <button
               onClick={handleLogout}
-              className="flex items-center justify-center gap-2 flex-1 px-4 py-2 rounded-xl border border-red-100 text-sm font-semibold text-red-500 hover:bg-red-50"
+              className="flex items-center justify-center gap-2 flex-1 px-4 py-2 rounded-xl border border-red-100 text-sm font-semibold text-red-500 hover:bg-red-50 transition"
             >
               <LogOut size={15} /> Logout
             </button>

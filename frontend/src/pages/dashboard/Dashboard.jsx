@@ -1,7 +1,8 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import api from "../../services/api";
 import { toast } from "react-toastify";
 import { motion, AnimatePresence } from "framer-motion";
+import { aggregateMetrics, aggregateBloodPressure } from "../../utils/healthUtils";
 import {
   AreaChart, Area,
   BarChart, Bar,
@@ -41,84 +42,9 @@ const formatChartDate = (value, view) => {
   return date.toLocaleDateString("en-IN", { day: "numeric", month: "short" });
 };
 
-// Aggregate metric values into daily / weekly / monthly buckets
-const aggregateMetrics = (logs, view, metric) => {
-  if (!logs?.length) return [];
 
-  const buckets = {};
 
-  logs.forEach((log) => {
-    if (log[metric] == null) return;
 
-    const date = new Date(log.loggedAt);
-    let key;
-
-    if (view === "daily") {
-      key = date.toISOString().split("T")[0];
-    } else if (view === "weekly") {
-      const d = new Date(date);
-      d.setDate(d.getDate() - d.getDay());
-      key = d.toISOString().split("T")[0];
-    } else {
-      key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-    }
-
-    if (!buckets[key]) buckets[key] = { values: [], date: log.loggedAt };
-    buckets[key].values.push(log[metric]);
-  });
-
-  return Object.entries(buckets)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([key, { values, date }]) => ({
-      date,
-      key,
-      avg: Number((values.reduce((sum, v) => sum + v, 0) / values.length).toFixed(1)),
-      min: Math.min(...values),
-      max: Math.max(...values),
-      count: values.length,
-    }));
-};
-
-// Aggregate blood pressure values (systolic + diastolic)
-const aggregateBloodPressure = (logs, view) => {
-  if (!logs?.length) return [];
-
-  const buckets = {};
-
-  logs.forEach((log) => {
-    if (!log.systolicBP && !log.diastolicBP) return;
-
-    const date = new Date(log.loggedAt);
-    let key;
-
-    if (view === "daily") {
-      key = date.toISOString().split("T")[0];
-    } else if (view === "weekly") {
-      const d = new Date(date);
-      d.setDate(d.getDate() - d.getDay());
-      key = d.toISOString().split("T")[0];
-    } else {
-      key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-    }
-
-    if (!buckets[key]) buckets[key] = { sys: [], dia: [], date: log.loggedAt };
-    if (log.systolicBP) buckets[key].sys.push(log.systolicBP);
-    if (log.diastolicBP) buckets[key].dia.push(log.diastolicBP);
-  });
-
-  return Object.entries(buckets)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([key, { sys, dia, date }]) => ({
-      date,
-      key,
-      systolicBP: sys.length
-        ? Number((sys.reduce((s, v) => s + v, 0) / sys.length).toFixed(1))
-        : null,
-      diastolicBP: dia.length
-        ? Number((dia.reduce((s, v) => s + v, 0) / dia.length).toFixed(1))
-        : null,
-    }));
-};
 
 // Tooltip shown when hovering over chart points
 const CustomTooltip = ({ active, payload, label, unit, mode }) => {
@@ -288,8 +214,12 @@ const Dashboard = () => {
   }, []);
 
   // Prefill form with latest health values
+  // AFTER — runs once after first summary load
+  const prefillDone = useRef(false);
+
   useEffect(() => {
-    if (summary) {
+    if (summary && !prefillDone.current) {
+      prefillDone.current = true;
       setForm({
         weight: summary.weight || "",
         systolicBP: summary.systolicBP || "",

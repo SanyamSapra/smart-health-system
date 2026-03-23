@@ -45,6 +45,11 @@ const userSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    
+    resetOtpVerified: {
+      type: Boolean,
+      default: false,
+    },
 
     // Profile completion flag
     profileCompleted: {

@@ -140,7 +140,7 @@ export const login = async (req, res) => {
 };
 
 // Logout user
-export const logout = async (req, res) => {
+export const logout =  (req, res) => {
   try {
     res.clearCookie("token", {
       httpOnly: true,
@@ -281,21 +281,18 @@ export const verifyResetOtp = async (req, res) => {
     const { email, otp } = req.body;
 
     if (!email || !otp)
-      return res
-        .status(400)
-        .json({ success: false, message: "Email and OTP are required" });
+      return res.status(400).json({
+        success: false,
+        message: "Email and OTP are required",
+      });
 
     const user = await User.findOne({ email: email.toLowerCase().trim() });
 
     if (!user)
-      return res
-        .status(404)
-        .json({ success: false, message: "User not found" });
+      return res.status(404).json({ success: false, message: "User not found" });
 
     if (user.resetOtpExpireAt < Date.now())
-      return res
-        .status(400)
-        .json({ success: false, message: "OTP expired" });
+      return res.status(400).json({ success: false, message: "OTP expired" });
 
     const hashedInput = crypto
       .createHash("sha256")
@@ -303,12 +300,15 @@ export const verifyResetOtp = async (req, res) => {
       .digest("hex");
 
     if (user.resetOtp !== hashedInput)
-      return res
-        .status(400)
-        .json({ success: false, message: "Invalid OTP" });
+      return res.status(400).json({ success: false, message: "Invalid OTP" });
+
+    // Mark OTP as verified and clear it so it can't be reused
+    user.resetOtpVerified = true;
+    user.resetOtp = "";
+    user.resetOtpExpireAt = null;
+    await user.save();
 
     return res.json({ success: true, message: "OTP verified" });
-
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -317,12 +317,13 @@ export const verifyResetOtp = async (req, res) => {
 // Reset password using OTP
 export const resetPassword = async (req, res) => {
   try {
-    const { email, otp, newPassword } = req.body;
+    const { email, newPassword } = req.body;
 
-    if (!email || !otp || !newPassword)
-      return res
-        .status(400)
-        .json({ success: false, message: "All fields are required" });
+    if (!email || !newPassword)
+      return res.status(400).json({
+        success: false,
+        message: "Email and new password are required",
+      });
 
     if (newPassword.length < 6)
       return res.status(400).json({
@@ -333,29 +334,17 @@ export const resetPassword = async (req, res) => {
     const user = await User.findOne({ email: email.toLowerCase().trim() });
 
     if (!user)
-      return res
-        .status(404)
-        .json({ success: false, message: "User not found" });
+      return res.status(404).json({ success: false, message: "User not found" });
 
-    if (user.resetOtpExpireAt < Date.now())
-      return res
-        .status(400)
-        .json({ success: false, message: "OTP expired" });
-
-    const hashedInput = crypto
-      .createHash("sha256")
-      .update(String(otp))
-      .digest("hex");
-
-    if (user.resetOtp !== hashedInput)
-      return res
-        .status(400)
-        .json({ success: false, message: "Invalid OTP" });
+    // Check the verified flag instead of re-accepting the raw OTP
+    if (!user.resetOtpVerified)
+      return res.status(400).json({
+        success: false,
+        message: "Please verify your OTP first",
+      });
 
     user.password = await bcrypt.hash(newPassword, 10);
-    user.resetOtp = "";
-    user.resetOtpExpireAt = null;
-
+    user.resetOtpVerified = false; // clear the flag
     await user.save();
 
     return res.json({ success: true, message: "Password reset successful" });
