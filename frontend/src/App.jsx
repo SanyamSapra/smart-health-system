@@ -15,6 +15,7 @@ import Layout from "./components/layout/Layout";
 import ProtectedRoutes from "./routes/ProtectedRoutes";
 import ProfileView from "./pages/profile/ProfileView";
 
+
 function App() {
   return (
     <>

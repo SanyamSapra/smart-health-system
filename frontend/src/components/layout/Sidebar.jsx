@@ -4,6 +4,7 @@ import { AppContext } from "../../context/AppContext";
 import {
   LayoutDashboard,
   User,
+  FolderOpen,
   LogOut,
   ChevronLeft,
   ChevronRight,
@@ -22,6 +23,7 @@ const Sidebar = () => {
 
   const navItems = [
     { path: "/app/dashboard", icon: LayoutDashboard, label: "Dashboard" },
+    { path: "/app/reports", icon: FolderOpen, label: "Reports" },
     { path: "/app/profile", icon: User, label: "Profile" },
   ];
 
@@ -29,9 +31,8 @@ const Sidebar = () => {
 
   return (
     <div
-      className={`h-screen bg-white border-r border-gray-200 flex flex-col transition-all duration-300 ${
-        collapsed ? "w-16" : "w-56"
-      }`}
+      className={`h-screen bg-white border-r border-gray-200 flex flex-col transition-all duration-300 ${collapsed ? "w-16" : "w-56"
+        }`}
     >
       {/* Logo + collapse toggle */}
       <div className="flex items-center justify-between px-4 py-5 border-b border-gray-100">
@@ -91,10 +92,9 @@ const Sidebar = () => {
               key={item.path}
               to={item.path}
               className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
-                  isActive
-                    ? "bg-blue-50 text-blue-600"
-                    : "text-gray-600 hover:bg-gray-50 hover:text-gray-800"
+                `flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${isActive
+                  ? "bg-blue-50 text-blue-600"
+                  : "text-gray-600 hover:bg-gray-50 hover:text-gray-800"
                 } ${collapsed ? "justify-center" : ""}`
               }
               title={collapsed ? item.label : ""}
@@ -110,9 +110,8 @@ const Sidebar = () => {
       <div className="px-2 py-4 border-t border-gray-100">
         <button
           onClick={handleLogout}
-          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-red-500 hover:bg-red-50 transition-all ${
-            collapsed ? "justify-center" : ""
-          }`}
+          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-red-500 hover:bg-red-50 transition-all ${collapsed ? "justify-center" : ""
+            }`}
           title={collapsed ? "Logout" : ""}
         >
           <LogOut size={18} className="flex-shrink-0" />
