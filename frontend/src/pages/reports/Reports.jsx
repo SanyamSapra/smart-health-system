@@ -77,6 +77,43 @@ function countReportsThisMonth(reports) {
   }).length;
 }
 
+function getReportInsights(extractedValues = {}) {
+  const entries = Object.entries(extractedValues).map(([key, value]) => ({
+    key: key.toLowerCase(),
+    value: String(value).toLowerCase(),
+  }));
+
+  const tips = [];
+
+  const hemoglobinItem = entries.find((item) => item.key.includes("hemoglobin"));
+  if (hemoglobinItem) {
+    const hemoglobinValue = parseFloat(hemoglobinItem.value);
+    if (!Number.isNaN(hemoglobinValue) && hemoglobinValue < 12) {
+      tips.push("Low hemoglobin detected. Include iron-rich foods like spinach, beans, and dates.");
+    }
+  }
+
+  const sugarItem = entries.find(
+    (item) =>
+      item.key.includes("sugar") ||
+      item.key.includes("glucose") ||
+      item.key.includes("hba1c")
+  );
+  if (sugarItem) {
+    const sugarValue = parseFloat(sugarItem.value);
+    if (!Number.isNaN(sugarValue)) {
+      if (
+        (sugarItem.key.includes("hba1c") && sugarValue > 6.4) ||
+        (!sugarItem.key.includes("hba1c") && sugarValue > 125)
+      ) {
+        tips.push("High sugar reading found. Reduce sugar intake and prefer balanced meals.");
+      }
+    }
+  }
+
+  return tips;
+}
+
 function ReportCard({ report, onView, onAnalyze, onDelete, isAnalyzing }) {
   const colorClass = TYPE_COLORS[report.type] || TYPE_COLORS.Other;
   const shortSummary =
@@ -123,6 +160,21 @@ function ReportCard({ report, onView, onAnalyze, onDelete, isAnalyzing }) {
               <p className="break-words whitespace-pre-line text-xs leading-relaxed text-indigo-600">
                 {shortSummary}
               </p>
+            </div>
+          )}
+
+          {report.reportInsights?.length > 0 && (
+            <div className="mt-2 rounded-lg bg-green-50 px-3 py-2">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-green-700">
+                Quick Tips
+              </p>
+              <div className="mt-1 space-y-1">
+                {report.reportInsights.slice(0, 2).map((tip) => (
+                  <p key={tip} className="text-xs leading-relaxed text-green-700">
+                    {tip}
+                  </p>
+                ))}
+              </div>
             </div>
           )}
         </div>
@@ -246,6 +298,19 @@ function ReportModal({ report, onClose, onAnalyze, isAnalyzing }) {
             {isAnalyzing ? "Analyzing..." : "Analyze with AI"}
           </button>
         )}
+
+        {report.reportInsights?.length > 0 && (
+          <div className="mt-4 rounded-xl border border-green-100 bg-green-50 p-4">
+            <p className="mb-2 text-xs font-bold text-green-700">Simple Report Tips</p>
+            <div className="space-y-2">
+              {report.reportInsights.map((tip) => (
+                <p key={tip} className="text-xs leading-relaxed text-green-700">
+                  {tip}
+                </p>
+              ))}
+            </div>
+          </div>
+        )}
       </motion.div>
     </motion.div>
   );
@@ -348,6 +413,8 @@ const Reports = () => {
     try {
       const response = await api.post(`/reports/${report._id}/analyze`);
       const summary = response.data.summary;
+      const extractedValues = response.data.extractedValues || {};
+      const reportInsights = getReportInsights(extractedValues);
 
       toast.success(
         response.data.cached ? "Showing cached analysis" : "Analysis complete"
@@ -355,7 +422,9 @@ const Reports = () => {
 
       setReports((currentReports) =>
         currentReports.map((item) =>
-          item._id === report._id ? { ...item, aiSummary: summary } : item
+          item._id === report._id
+            ? { ...item, aiSummary: summary, extractedValues, reportInsights }
+            : item
         )
       );
 
@@ -367,6 +436,8 @@ const Reports = () => {
         return {
           ...currentReport,
           aiSummary: summary,
+          extractedValues,
+          reportInsights,
         };
       });
     } catch (error) {
@@ -598,7 +669,7 @@ const Reports = () => {
             </p>
             <button
               onClick={() => setShowUpload(true)}
-              className="mt-2 flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
+            className="mt-2 flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700"
             >
               <Plus size={14} />
               Upload Report

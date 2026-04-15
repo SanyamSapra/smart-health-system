@@ -5,6 +5,7 @@ import {
   LayoutDashboard,
   User,
   FolderOpen,
+  Bot,
   LogOut,
   ChevronLeft,
   ChevronRight,
@@ -23,6 +24,7 @@ const Sidebar = () => {
 
   const navItems = [
     { path: "/app/dashboard", icon: LayoutDashboard, label: "Dashboard" },
+    { path: "/app/chatbot", icon: Bot, label: "AI Assistant" },
     { path: "/app/reports", icon: FolderOpen, label: "Reports" },
     { path: "/app/profile", icon: User, label: "Profile" },
   ];

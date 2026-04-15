@@ -1,5 +1,6 @@
 import User from "../models/User.js";
 import HealthLog from "../models/HealthLog.js";
+import { calculateAge } from "../utils/healthInsights.js";
 
 // Get logged-in user's profile data
 export const getUserData = async (req, res) => {
@@ -14,19 +15,7 @@ export const getUserData = async (req, res) => {
         .json({ success: false, message: "User not found" });
     }
 
-    // Calculate age from date of birth
-    let age = null;
-    if (user.dateOfBirth) {
-      const today = new Date();
-      const birth = new Date(user.dateOfBirth);
-
-      age = today.getFullYear() - birth.getFullYear();
-      const m = today.getMonth() - birth.getMonth();
-
-      if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) {
-        age--;
-      }
-    }
+    const age = calculateAge(user.dateOfBirth);
 
     return res.json({
       success: true,

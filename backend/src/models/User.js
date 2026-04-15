@@ -102,6 +102,36 @@ const userSchema = new mongoose.Schema(
       type: [String],
       default: [],
     },
+
+    aiInsights: {
+      insights: {
+        type: [String],
+        default: [],
+      },
+      tips: {
+        type: [String],
+        default: [],
+      },
+      warning: {
+        type: String,
+        default: "",
+      },
+      generatedAt: {
+        type: Date,
+        default: null,
+      },
+    },
+
+    aiChatUsage: {
+      date: {
+        type: String,
+        default: "",
+      },
+      count: {
+        type: Number,
+        default: 0,
+      },
+    },
   },
   { timestamps: true }
 );

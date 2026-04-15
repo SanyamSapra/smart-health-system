@@ -4,6 +4,7 @@ import { createPartFromBase64 } from "@google/genai";
 import cloudinary from "../config/cloudinary.js";
 import ai, { hasGeminiKey } from "../config/gemini.js";
 import Report from "../models/Report.js";
+import { getReportTips } from "../utils/healthInsights.js";
 
 const GEMINI_MODEL = "gemini-3-flash-preview";
 const ANALYSIS_CACHE_HOURS = 24;
@@ -23,9 +24,32 @@ async function findUserReport(reportId, userId) {
   return Report.findOne({ _id: reportId, user: userId });
 }
 
+function normalizeExtractedValues(extractedValues) {
+  if (!extractedValues) {
+    return {};
+  }
+
+  if (extractedValues instanceof Map) {
+    return Object.fromEntries(extractedValues);
+  }
+
+  if (Array.isArray(extractedValues)) {
+    return Object.fromEntries(extractedValues);
+  }
+
+  return extractedValues;
+}
+
 function formatReport(report) {
   if (!report) return null;
-  return report.toObject ? report.toObject() : { ...report };
+  const plainReport = report.toObject ? report.toObject() : { ...report };
+  const extractedValues = normalizeExtractedValues(plainReport.extractedValues);
+
+  return {
+    ...plainReport,
+    extractedValues,
+    reportInsights: getReportTips(extractedValues),
+  };
 }
 
 function getFileTypeFromUpload(file) {
@@ -223,7 +247,7 @@ function getCachedAnalysis(report) {
   return {
     success: true,
     summary: report.aiSummary,
-    extractedValues: Object.fromEntries(report.extractedValues || []),
+    extractedValues: normalizeExtractedValues(report.extractedValues),
     cached: true,
   };
 }
@@ -282,8 +306,7 @@ export const uploadReport = async (req, res) => {
 export const getReports = async (req, res) => {
   try {
     const reports = await Report.find({ user: req.userId })
-      .sort({ reportDate: -1 })
-      .select("-extractedValues");
+      .sort({ reportDate: -1 });
 
     return res.json({
       success: true,

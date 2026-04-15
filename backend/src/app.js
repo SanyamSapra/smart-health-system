@@ -5,6 +5,7 @@ import authRoutes from "./routes/authRoutes.js";
 import userRouter from "./routes/userRoutes.js";
 import healthRoutes from "./routes/healthRoutes.js";
 import reportRoutes from "./routes/reportRoutes.js";
+import aiRoutes from "./routes/aiRoutes.js";
 
 const app = express();
 
@@ -25,6 +26,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/user", userRouter);
 app.use("/api/health", healthRoutes);
 app.use("/api/reports", reportRoutes);
+app.use("/api/ai", aiRoutes);
 
 // Simple health check route
 app.get("/", (req, res) => {

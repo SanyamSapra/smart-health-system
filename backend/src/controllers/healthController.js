@@ -1,6 +1,13 @@
 import User from "../models/User.js";
 import HealthLog from "../models/HealthLog.js";
 import mongoose from "mongoose";
+import {
+  calculateAge,
+  calculateBMI,
+  calculateHealthScore,
+  getTrendMessages,
+  hasLoggedToday,
+} from "../utils/healthInsights.js";
 
 // Get the latest health metrics for the dashboard
 export const getLatestHealthSummary = async (req, res) => {
@@ -26,49 +33,51 @@ export const getLatestHealthSummary = async (req, res) => {
       });
     }
 
-    // BMI calculation using height (cm) and weight (kg)
-    let bmi = null;
-
-    if (user.height) {
+    let latestWeight = latestLog.weight ?? null;
+    if (latestWeight == null) {
       const latestWeightLog = await HealthLog.findOne({
         user: userId,
-        weight: { $ne: null }
+        weight: { $ne: null },
       }).sort({ loggedAt: -1 });
 
-      if (latestWeightLog?.weight) {
-        const heightInMeters = user.height / 100;
-        bmi = Number(
-          (latestWeightLog.weight / (heightInMeters * heightInMeters)).toFixed(2)
-        );
-      }
+      latestWeight = latestWeightLog?.weight ?? null;
     }
 
-    // Calculate age from date of birth
-    let age = null;
-    if (user.dateOfBirth) {
-      const today = new Date();
-      const birth = new Date(user.dateOfBirth);
-      age = today.getFullYear() - birth.getFullYear();
-      const monthDiff = today.getMonth() - birth.getMonth();
+    const bmi = calculateBMI(user.height, latestWeight);
+    const age = calculateAge(user.dateOfBirth);
 
-      if (
-        monthDiff < 0 ||
-        (monthDiff === 0 && today.getDate() < birth.getDate())
-      ) {
-        age--;
-      }
-    }
+    const recentLogs = await HealthLog.find({
+      user: userId,
+      loggedAt: {
+        $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
+      },
+    })
+      .sort({ loggedAt: 1 })
+      .select("weight systolicBP diastolicBP sugarLevel loggedAt");
+
+    const healthScore = calculateHealthScore({
+      bmi,
+      systolicBP: latestLog.systolicBP,
+      diastolicBP: latestLog.diastolicBP,
+      sugarLevel: latestLog.sugarLevel,
+    });
+
+    const trends = getTrendMessages(recentLogs);
+    const loggedToday = hasLoggedToday(recentLogs);
 
     return res.json({
       success: true,
       data: {
         height: user.height,
         age,
-        weight: latestLog.weight,
+        weight: latestWeight,
         systolicBP: latestLog.systolicBP,
         diastolicBP: latestLog.diastolicBP,
         sugarLevel: latestLog.sugarLevel,
         bmi,
+        healthScore,
+        trends,
+        loggedToday,
         lastUpdated: latestLog.loggedAt,
       },
     });
@@ -136,6 +145,8 @@ export const getHealthHistory = async (req, res) => {
     return res.json({
       success: true,
       count: logs.length,
+      trends: getTrendMessages(logs),
+      loggedToday: hasLoggedToday(logs),
       data: logs,
     });
   } catch (error) {

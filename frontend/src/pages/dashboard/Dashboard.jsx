@@ -14,6 +14,7 @@ import {
 } from "recharts";
 import {
   AlertTriangle,
+  Bot,
   Weight,
   Stethoscope,
   Droplets,
@@ -189,6 +190,8 @@ const Dashboard = () => {
   const [summaryLoading, setSummaryLoading] = useState(true);
   const [historyLoading, setHistoryLoading] = useState(true);
   const [submitLoading, setSubmitLoading] = useState(false);
+  const [insights, setInsights] = useState(null);
+  const [insightsLoading, setInsightsLoading] = useState(true);
 
   // Each chart has its own timeframe and chart type state
   const [weightTimeframe, setWeightTimeframe] = useState("daily");
@@ -211,6 +214,7 @@ const Dashboard = () => {
   useEffect(() => {
     fetchSummary();
     fetchHistory();
+    fetchInsights();
   }, []);
 
   // Prefill form with latest health values
@@ -251,6 +255,18 @@ const Dashboard = () => {
       toast.error("Failed to load history");
     } finally {
       setHistoryLoading(false);
+    }
+  };
+
+  const fetchInsights = async () => {
+    setInsightsLoading(true);
+    try {
+      const res = await api.get("/ai/insights");
+      setInsights(res.data.data);
+    } catch {
+      toast.error("Failed to load AI insights");
+    } finally {
+      setInsightsLoading(false);
     }
   };
 
@@ -488,10 +504,19 @@ const Dashboard = () => {
           )}
         </AnimatePresence>
 
+        {!summary?.loggedToday && !summaryLoading && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+            <p className="text-sm font-semibold text-amber-700">Log your health today</p>
+            <p className="mt-1 text-xs text-amber-600">
+              Adding one daily entry helps the dashboard track trends more clearly.
+            </p>
+          </div>
+        )}
+
         {/* Summary cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
           {summaryLoading ? (
-            Array(4).fill(0).map((_, i) => (
+            Array(5).fill(0).map((_, i) => (
               <div key={i} className="h-28 rounded-2xl animate-pulse bg-gray-200" />
             ))
           ) : (
@@ -524,8 +549,87 @@ const Dashboard = () => {
                 bg="linear-gradient(135deg, #f0fdf4, #dcfce7)"
                 textColor="#22c55e" accentColor="#15803d"
               />
+              <StatCard
+                delay={0.25} label="Health Score" icon={TrendingUp}
+                value={summary?.healthScore?.score}
+                sub={summary?.healthScore?.status ? `● ${summary.healthScore.status}` : null}
+                bg="linear-gradient(135deg, #fff7ed, #ffedd5)"
+                textColor="#f97316" accentColor="#c2410c"
+              />
             </>
           )}
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, delay: 0.22 }}
+            className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5"
+          >
+            <div className="flex items-center gap-2 mb-4">
+              <TrendingUp size={16} className="text-blue-600" />
+              <h3 className="text-sm font-bold text-gray-700">Trend Detection</h3>
+            </div>
+
+            {summary?.trends?.length ? (
+              <div className="space-y-2">
+                {summary.trends.map((item) => (
+                  <div key={item} className="rounded-xl bg-blue-50 px-3 py-2 text-sm text-blue-700">
+                    {item}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-gray-400">Add more logs to see simple health trends.</p>
+            )}
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, delay: 0.24 }}
+            className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5"
+          >
+            <div className="flex items-center gap-2 mb-4">
+              <Bot size={16} className="text-indigo-600" />
+              <h3 className="text-sm font-bold text-gray-700">Smart Insights</h3>
+            </div>
+
+            {insightsLoading ? (
+              <Skeleton h="h-40" />
+            ) : (
+              <div className="space-y-4">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-wide text-gray-400 mb-2">Insights</p>
+                  <div className="space-y-2">
+                    {(insights?.insights || []).map((item) => (
+                      <div key={item} className="rounded-xl bg-indigo-50 px-3 py-2 text-sm text-indigo-700">
+                        {item}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-wide text-gray-400 mb-2">Tips</p>
+                  <div className="space-y-2">
+                    {(insights?.tips || []).map((item) => (
+                      <div key={item} className="rounded-xl bg-green-50 px-3 py-2 text-sm text-green-700">
+                        {item}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {insights?.warning && (
+                  <div className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">
+                    {insights.warning}
+                  </div>
+                )}
+              </div>
+            )}
+          </motion.div>
         </div>
 
         {/* Add log form */}
