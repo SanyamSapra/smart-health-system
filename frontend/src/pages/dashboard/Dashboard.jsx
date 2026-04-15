@@ -504,6 +504,55 @@ const Dashboard = () => {
           )}
         </AnimatePresence>
 
+        {/* Add log form */}
+        <AnimatePresence>
+          {showForm && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              className="overflow-hidden"
+            >
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+                <h2 className="text-sm font-bold text-gray-700 mb-4">Log Health Metrics</h2>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+                  {[
+                    { key: "weight", placeholder: "Weight (kg)", min: 20, max: 300 },
+                    { key: "systolicBP", placeholder: "Systolic BP", min: 60, max: 250 },
+                    { key: "diastolicBP", placeholder: "Diastolic BP", min: 40, max: 150 },
+                    { key: "sugarLevel", placeholder: "Sugar (mg/dL)", min: 30, max: 600 },
+                  ].map(({ key, placeholder, min, max }) => (
+                    <input
+                      key={key}
+                      type="number"
+                      placeholder={placeholder}
+                      value={form[key]}
+                      min={min}
+                      max={max}
+                      onChange={(e) => setForm({ ...form, [key]: e.target.value })}
+                      className="border border-gray-200 p-2.5 rounded-lg text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-300"
+                    />
+                  ))}
+                </div>
+                <input
+                  type="text"
+                  placeholder="Notes (optional)"
+                  value={form.notes}
+                  onChange={(e) => setForm({ ...form, notes: e.target.value })}
+                  className="border border-gray-200 p-2.5 rounded-lg text-sm w-full mb-4 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-300"
+                />
+                <button
+                  onClick={addLog}
+                  disabled={submitLoading}
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-lg text-sm font-semibold transition disabled:opacity-50"
+                >
+                  {submitLoading ? "Saving..." : "Save Log"}
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {!summary?.loggedToday && !summaryLoading && (
           <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
             <p className="text-sm font-semibold text-amber-700">Log your health today</p>
@@ -632,54 +681,7 @@ const Dashboard = () => {
           </motion.div>
         </div>
 
-        {/* Add log form */}
-        <AnimatePresence>
-          {showForm && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: "auto" }}
-              exit={{ opacity: 0, height: 0 }}
-              className="overflow-hidden"
-            >
-              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-                <h2 className="text-sm font-bold text-gray-700 mb-4">Log Health Metrics</h2>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
-                  {[
-                    { key: "weight", placeholder: "Weight (kg)", min: 20, max: 300 },
-                    { key: "systolicBP", placeholder: "Systolic BP", min: 60, max: 250 },
-                    { key: "diastolicBP", placeholder: "Diastolic BP", min: 40, max: 150 },
-                    { key: "sugarLevel", placeholder: "Sugar (mg/dL)", min: 30, max: 600 },
-                  ].map(({ key, placeholder, min, max }) => (
-                    <input
-                      key={key}
-                      type="number"
-                      placeholder={placeholder}
-                      value={form[key]}
-                      min={min}
-                      max={max}
-                      onChange={(e) => setForm({ ...form, [key]: e.target.value })}
-                      className="border border-gray-200 p-2.5 rounded-lg text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-300"
-                    />
-                  ))}
-                </div>
-                <input
-                  type="text"
-                  placeholder="Notes (optional)"
-                  value={form.notes}
-                  onChange={(e) => setForm({ ...form, notes: e.target.value })}
-                  className="border border-gray-200 p-2.5 rounded-lg text-sm w-full mb-4 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-300"
-                />
-                <button
-                  onClick={addLog}
-                  disabled={submitLoading}
-                  className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-lg text-sm font-semibold transition disabled:opacity-50"
-                >
-                  {submitLoading ? "Saving..." : "Save Log"}
-                </button>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+        
 
         {/* Weight + BP charts side by side */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
