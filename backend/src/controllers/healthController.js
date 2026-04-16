@@ -9,6 +9,21 @@ import {
   hasLoggedToday,
 } from "../utils/healthInsights.js";
 
+function sanitizeMetric(value) {
+  if (value == null || value === "") return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+async function invalidateAiCache(userId) {
+  await User.findByIdAndUpdate(userId, {
+    $set: {
+      "aiInsights.generatedAt": null,
+      aiChatCache: [],
+    },
+  });
+}
+
 // Get the latest health metrics for the dashboard
 export const getLatestHealthSummary = async (req, res) => {
   try {
@@ -21,9 +36,10 @@ export const getLatestHealthSummary = async (req, res) => {
         .json({ success: false, message: "User not found" });
     }
 
-    const latestLog = await HealthLog.findOne({ user: userId }).sort({
-      loggedAt: -1,
-    });
+    const latestLog = await HealthLog.findOne({ user: userId })
+      .sort({ loggedAt: -1 })
+      .select("weight systolicBP diastolicBP sugarLevel loggedAt")
+      .lean();
 
     if (!latestLog) {
       return res.json({
@@ -38,7 +54,10 @@ export const getLatestHealthSummary = async (req, res) => {
       const latestWeightLog = await HealthLog.findOne({
         user: userId,
         weight: { $ne: null },
-      }).sort({ loggedAt: -1 });
+      })
+        .sort({ loggedAt: -1 })
+        .select("weight")
+        .lean();
 
       latestWeight = latestWeightLog?.weight ?? null;
     }
@@ -90,24 +109,35 @@ export const getLatestHealthSummary = async (req, res) => {
 export const addHealthLog = async (req, res) => {
   try {
     const userId = req.userId;
-
     const { weight, systolicBP, diastolicBP, sugarLevel, notes } = req.body;
 
-    if (weight == null && systolicBP == null && diastolicBP == null && sugarLevel == null) {
+    const cleanWeight = sanitizeMetric(weight);
+    const cleanSystolic = sanitizeMetric(systolicBP);
+    const cleanDiastolic = sanitizeMetric(diastolicBP);
+    const cleanSugar = sanitizeMetric(sugarLevel);
+
+    if (
+      cleanWeight === undefined &&
+      cleanSystolic === undefined &&
+      cleanDiastolic === undefined &&
+      cleanSugar === undefined
+    ) {
       return res.status(400).json({
         success: false,
-        message: "At least one health metric is required",
+        message: "At least one valid health metric is required",
       });
     }
 
     const newLog = await HealthLog.create({
       user: userId,
-      weight,
-      systolicBP,
-      diastolicBP,
-      sugarLevel,
-      notes,
+      weight: cleanWeight,
+      systolicBP: cleanSystolic,
+      diastolicBP: cleanDiastolic,
+      sugarLevel: cleanSugar,
+      notes: typeof notes === "string" ? notes.trim() : notes,
     });
+
+    await invalidateAiCache(userId);
 
     return res.status(201).json({
       success: true,
@@ -115,7 +145,6 @@ export const addHealthLog = async (req, res) => {
       data: newLog,
     });
   } catch (error) {
-    // Return schema validation errors in a cleaner way
     if (error.name === "ValidationError") {
       const messages = Object.values(error.errors).map((e) => e.message);
       return res.status(400).json({ success: false, message: messages[0] });
@@ -189,6 +218,8 @@ export const updateHealthLog = async (req, res) => {
         .json({ success: false, message: "Health log not found" });
     }
 
+    await invalidateAiCache(req.userId);
+
     return res.json({ success: true, data: log });
   } catch (error) {
     if (error.name === "ValidationError") {
@@ -216,6 +247,8 @@ export const deleteHealthLog = async (req, res) => {
         .status(404)
         .json({ success: false, message: "Health log not found" });
     }
+
+    await invalidateAiCache(req.userId);
 
     return res.json({ success: true, message: "Health log deleted" });
   } catch (error) {

@@ -112,7 +112,7 @@ const ResetPassword = () => {
   ];
 
   return (
-    <div className="min-h-screen flex">
+    <div className="min-h-screen flex flex-col md:flex-row">
 
       {/* LEFT PANEL */}
       <div className="hidden md:flex w-1/2 bg-gradient-to-b from-blue-600 to-indigo-800 items-center justify-center">

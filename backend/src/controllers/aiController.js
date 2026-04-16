@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import ai, { hasGeminiKey } from "../config/gemini.js";
 import User from "../models/User.js";
 import HealthLog from "../models/HealthLog.js";
@@ -11,6 +12,8 @@ import {
 const GEMINI_MODEL = "gemini-3-flash-preview";
 const INSIGHTS_CACHE_HOURS = 24;
 const CHAT_LIMIT_PER_DAY = 10;
+const CHAT_CACHE_HOURS = 12;
+const MAX_CHAT_HISTORY = 5;
 
 function getTodayKey() {
   return new Date().toISOString().split("T")[0];
@@ -23,6 +26,77 @@ function sendFallbackChat(res) {
       "Please stay hydrated, eat balanced meals, and continue tracking your health regularly.\nIf you feel unwell or your readings stay abnormal, please speak with a doctor.",
     fallback: true,
   });
+}
+
+function normalizeText(text) {
+  return (text || "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function hashMessage(message) {
+  return crypto.createHash("sha256").update(normalizeText(message)).digest("hex");
+}
+
+function detectIntent(message) {
+  const normalized = normalizeText(message);
+
+  if (/report|lab|scan|x-ray|prescription|summary|findings|diagnosis/.test(normalized)) {
+    return "report_explanation";
+  }
+
+  if (/diet|exercise|sleep|stress|smoke|alcohol|hydration|water|lifestyle|nutrition|meal|food/.test(normalized)) {
+    return "lifestyle_advice";
+  }
+
+  return "health_query";
+}
+
+function getIntentLabel(intent) {
+  if (intent === "report_explanation") return "Report Explanation";
+  if (intent === "lifestyle_advice") return "Lifestyle Advice";
+  return "Health Query";
+}
+
+function findCachedChat(user, messageHash, latestLogTime) {
+  if (!user?.aiChatCache?.length) return null;
+
+  const cutoff = Date.now() - CHAT_CACHE_HOURS * 60 * 60 * 1000;
+  return user.aiChatCache.find((cache) => {
+    return (
+      cache.messageHash === messageHash &&
+      new Date(cache.createdAt).getTime() >= cutoff &&
+      (!latestLogTime || new Date(cache.createdAt).getTime() >= new Date(latestLogTime).getTime())
+    );
+  });
+}
+
+function appendChatHistory(user, userMessage, assistantMessage, intent) {
+  const history = user.aiChatHistory || [];
+  history.push({ userMessage, assistantMessage, intent, createdAt: new Date() });
+  return history.slice(-MAX_CHAT_HISTORY);
+}
+
+function buildSystemPrompt() {
+  return `You are a preventive healthcare assistant. Do not diagnose. Only give safe, general advice. If the user asks about a report, explain it in an easy, mindful way. Keep the tone encouraging and avoid medical jargon.`;
+}
+
+function buildPreviousResponsesSection(history) {
+  if (!history?.length) return "";
+
+  return history
+    .map(
+      (item, index) =>
+        `Previous response ${index + 1} (intent: ${item.intent}): ${item.assistantMessage}`
+    )
+    .join("\n");
+}
+
+function buildLimitInstruction(message) {
+  const normalized = normalizeText(message);
+  if (normalized.includes("same") || normalized.includes("repeat")) {
+    return "If the user is repeating a similar question, rephrase the response with slightly different wording and keep it helpful.";
+  }
+
+  return "";
 }
 
 function buildWarning(log) {
@@ -41,7 +115,7 @@ function buildWarning(log) {
 
 async function getUserHealthContext(userId, days = 30) {
   const user = await User.findById(userId).select(
-    "gender dateOfBirth height medicalConditions aiInsights aiChatUsage"
+    "gender dateOfBirth height medicalConditions aiInsights aiChatUsage aiChatCache aiChatHistory"
   );
 
   const latestLog = await HealthLog.findOne({ user: userId }).sort({ loggedAt: -1 });
@@ -86,8 +160,30 @@ async function getUserHealthContext(userId, days = 30) {
   };
 }
 
-function getChatPrompt({ user, latestLog, latestWeight, age, bmi, message }) {
-  return `You are a helpful health assistant for a student project.
+function getChatPrompt({
+  user,
+  latestLog,
+  latestWeight,
+  age,
+  bmi,
+  message,
+  intent,
+  history,
+  healthScore,
+}) {
+  const toneStyles = [
+    "friendly and conversational",
+    "concise and practical",
+    "supportive and coaching",
+  ];
+
+  const tone = toneStyles[Math.floor(Math.random() * toneStyles.length)];
+
+  return `${buildSystemPrompt()}
+
+Tone: ${tone}
+
+Intent: ${getIntentLabel(intent)}
 
 User profile:
 - Age: ${age ?? "Unknown"}
@@ -105,21 +201,50 @@ Latest health data:
   } mmHg
 - Sugar level: ${latestLog?.sugarLevel ?? "N/A"} mg/dL
 - BMI: ${bmi ?? "Not available"}
+- Health score: ${healthScore.score} (${healthScore.category})
+
+${
+  history?.length
+    ? `Previous assistant responses:\n${buildPreviousResponsesSection(history)}\n`
+    : ""
+}
+
+${buildLimitInstruction(message)}
 
 User question:
 ${message}
 
-Rules:
-- Reply in simple language (max 4–5 lines)
-- Give safe general advice
-- Do not diagnose
+---
 
-IMPORTANT:
-- Use health data ONLY if it is directly relevant to the question
-- Do NOT mention sugar, BP, or other metrics unnecessarily
-- Avoid repeating the same condition in every response
-- Keep the response natural and conversational
-- If the question is general (like headache or tiredness), give general advice first`;
+Response Style (CRITICAL):
+
+- Respond like a real human, not a textbook or article
+- Keep it conversational and natural
+- Avoid long explanations unless necessary
+- Do NOT try to cover every possible tip
+
+Structure:
+1. Acknowledge the concern naturally (1 line)
+2. Give one personalized insight (based on user data)
+3. Suggest 1–2 practical things (not a long list)
+4. Optionally ask a simple follow-up question
+
+Tone:
+- Friendly, calm, and slightly informal
+- Avoid robotic or formal language
+- Avoid structured bullet lists unless absolutely needed
+
+STRICTLY AVOID:
+- Over-explaining basic concepts
+- Giving 4–5 tips at once
+- Repeating common advice like "drink water" unless very relevant
+- Sounding like a blog or health article
+
+---
+
+Goal:
+Make the response feel personalized, intelligent, and different each time — not like a template.
+`;
 }
 
 function getInsightsPrompt({ user, latestLog, latestWeight, logs, age, bmi, healthScore, trends }) {
@@ -143,7 +268,7 @@ Latest:
 - BMI: ${bmi ?? "N/A"}
 - Blood pressure: ${latestLog?.systolicBP ?? "N/A"}/${latestLog?.diastolicBP ?? "N/A"} mmHg
 - Sugar: ${latestLog?.sugarLevel ?? "N/A"} mg/dL
-- Health score: ${healthScore.score} (${healthScore.status})
+- Health score: ${healthScore.score} (${healthScore.category})
 
 Recent logs:
 ${recentSummary || "No recent logs"}
@@ -181,7 +306,9 @@ export const chatWithAssistant = async (req, res) => {
       return res.status(400).json({ success: false, message: "Message is required" });
     }
 
-    const user = await User.findById(req.userId).select("aiChatUsage");
+    const user = await User.findById(req.userId).select(
+      "aiChatUsage aiChatCache aiChatHistory"
+    );
     if (!user) {
       return res.status(404).json({ success: false, message: "User not found" });
     }
@@ -198,6 +325,22 @@ export const chatWithAssistant = async (req, res) => {
       });
     }
 
+    const context = await getUserHealthContext(req.userId, 7);
+    const messageHash = hashMessage(message);
+    const cached = findCachedChat(user, messageHash, context.latestLog?.loggedAt);
+
+    if (cached) {
+      user.aiChatUsage.count += 1;
+      await user.save();
+      return res.json({
+        success: true,
+        reply: cached.reply,
+        remainingRequests: CHAT_LIMIT_PER_DAY - user.aiChatUsage.count,
+        cached: true,
+        fallback: false,
+      });
+    }
+
     user.aiChatUsage.count += 1;
     await user.save();
 
@@ -205,7 +348,8 @@ export const chatWithAssistant = async (req, res) => {
       return sendFallbackChat(res);
     }
 
-    const context = await getUserHealthContext(req.userId, 7);
+    const intent = detectIntent(message);
+    const history = (user.aiChatHistory || []).slice(-MAX_CHAT_HISTORY);
     const result = await ai.models.generateContent({
       model: GEMINI_MODEL,
       contents: getChatPrompt({
@@ -215,6 +359,9 @@ export const chatWithAssistant = async (req, res) => {
         age: context.age,
         bmi: context.bmi,
         message,
+        intent,
+        history,
+        healthScore: context.healthScore,
       }),
     });
 
@@ -222,6 +369,18 @@ export const chatWithAssistant = async (req, res) => {
     if (!reply) {
       return sendFallbackChat(res);
     }
+
+    const updatedCache = user.aiChatCache || [];
+    updatedCache.push({
+      messageHash,
+      normalizedMessage: normalizeText(message),
+      reply,
+      createdAt: new Date(),
+    });
+
+    user.aiChatCache = updatedCache.slice(-20);
+    user.aiChatHistory = appendChatHistory(user, message, reply, intent);
+    await user.save();
 
     return res.json({
       success: true,
@@ -271,7 +430,7 @@ export const getDashboardInsights = async (req, res) => {
           ? `Your current BMI is ${context.bmi}.`
           : "Add weight logs to view BMI-based insight.",
         context.latestLog
-          ? `Your health score is ${context.healthScore.score} (${context.healthScore.status}).`
+          ? `Your health score is ${context.healthScore.score} (${context.healthScore.category}).`
           : "More health data will improve your dashboard insights.",
       ],
       tips: [

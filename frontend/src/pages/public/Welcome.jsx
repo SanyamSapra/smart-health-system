@@ -34,10 +34,10 @@ const Welcome = () => {
   }, []);
 
   return (
-    <div className="flex min-h-screen">
+    <div className="flex min-h-screen flex-col md:flex-row">
 
       {/* LEFT */}
-      <div className="w-1/2 bg-gradient-to-br from-blue-600 to-indigo-800 flex flex-col justify-center items-center text-white p-10">
+      <div className="w-full md:w-1/2 bg-gradient-to-br from-blue-600 to-indigo-800 flex flex-col justify-center items-center text-white p-8 md:p-10">
         <motion.div
           initial={{ x: -100, opacity: 0 }}
           animate={{ x: 0, opacity: 1 }}
@@ -56,7 +56,7 @@ const Welcome = () => {
       </div>
 
       {/* RIGHT */}
-      <div className="w-1/2 flex flex-col justify-center items-center bg-gray-50 p-10 gap-8">
+      <div className="w-full md:w-1/2 flex flex-col justify-center items-center bg-gray-50 p-8 md:p-10 gap-8">
 
         {/* Cycling feature */}
         <div className="h-12 flex items-center justify-center">

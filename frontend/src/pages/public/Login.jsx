@@ -60,10 +60,10 @@ const Login = () => {
   };
 
   return (
-    <div className="min-h-screen flex">
+    <div className="min-h-screen flex flex-col md:flex-row">
 
       {/* LEFT SIDE BRANDING */}
-      <div className="hidden h-screen md:flex w-1/2 bg-gradient-to-br from-blue-600 to-indigo-800 items-center justify-center text-white p-10">
+      <div className="hidden md:flex h-full md:w-1/2 bg-linear-to-br from-blue-600 to-indigo-800 items-center justify-center text-white p-10">
         <div>
           <div className="flex items-center gap-3 mb-6">
             <HeartPulse size={44} className="text-white/90" />
@@ -74,7 +74,7 @@ const Login = () => {
       </div>
 
       {/* RIGHT SIDE AUTH CARD */}
-      <div className="flex w-full md:w-1/2 items-center justify-center bg-gradient-to-br from-gray-100 to-gray-300 px-6">
+      <div className="flex w-full md:w-1/2 items-center justify-center bg-linear-to-br from-gray-100 to-gray-300 px-6 py-10 md:py-0">
         <div className="bg-white shadow-2xl rounded-2xl p-8 w-full max-w-md border border-gray-100">
 
           {/* Heading with icon */}

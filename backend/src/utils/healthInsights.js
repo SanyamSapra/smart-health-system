@@ -22,33 +22,7 @@ export function calculateBMI(heightCm, weightKg) {
   return Number((weightKg / (heightInMeters * heightInMeters)).toFixed(2));
 }
 
-export function calculateHealthScore({ bmi, systolicBP, diastolicBP, sugarLevel }) {
-  let score = 100;
-
-  if (bmi != null) {
-    if (bmi < 18.5 || bmi > 30) score -= 20;
-    else if (bmi >= 25) score -= 10;
-  }
-
-  if (systolicBP != null || diastolicBP != null) {
-    if (systolicBP >= 140 || diastolicBP >= 90) score -= 25;
-    else if (systolicBP >= 130 || diastolicBP >= 80) score -= 12;
-  }
-
-  if (sugarLevel != null) {
-    if (sugarLevel >= 200) score -= 25;
-    else if (sugarLevel >= 126) score -= 15;
-    else if (sugarLevel >= 100) score -= 8;
-  }
-
-  score = Math.max(0, Math.min(100, score));
-
-  let status = "Good";
-  if (score < 50) status = "Poor";
-  else if (score < 75) status = "Moderate";
-
-  return { score, status };
-}
+export { calculateHealthScore } from "./healthScore.js";
 
 function getTrendDirection(change, positiveMessage, negativeMessage, stableMessage) {
   if (change > 0) return positiveMessage;

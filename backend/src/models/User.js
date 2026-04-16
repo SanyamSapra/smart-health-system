@@ -132,6 +132,30 @@ const userSchema = new mongoose.Schema(
         default: 0,
       },
     },
+
+    aiChatCache: [
+      {
+        messageHash: String,
+        normalizedMessage: String,
+        reply: String,
+        createdAt: {
+          type: Date,
+          default: Date.now,
+        },
+      },
+    ],
+
+    aiChatHistory: [
+      {
+        userMessage: String,
+        assistantMessage: String,
+        intent: String,
+        createdAt: {
+          type: Date,
+          default: Date.now,
+        },
+      },
+    ],
   },
   { timestamps: true }
 );

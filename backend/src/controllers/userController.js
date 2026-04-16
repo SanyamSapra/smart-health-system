@@ -1,6 +1,7 @@
 import User from "../models/User.js";
 import HealthLog from "../models/HealthLog.js";
 import { calculateAge } from "../utils/healthInsights.js";
+import { createDefaultReminderForUser } from "./reminderController.js";
 
 // Get logged-in user's profile data
 export const getUserData = async (req, res) => {
@@ -98,6 +99,7 @@ export const completeProfile = async (req, res) => {
 
     // Create first weight entry so health tracking starts immediately
     await HealthLog.create({ user: userId, weight });
+    await createDefaultReminderForUser(userId);
 
     return res.json({
       success: true,
