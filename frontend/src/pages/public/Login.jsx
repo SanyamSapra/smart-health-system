@@ -60,10 +60,10 @@ const Login = () => {
   };
 
   return (
-    <div className="min-h-screen flex">
+    <div className="flex min-h-screen flex-col md:flex-row">
 
       {/* LEFT SIDE BRANDING */}
-      <div className="hidden h-screen md:flex w-1/2 bg-gradient-to-br from-blue-600 to-indigo-800 items-center justify-center text-white p-10">
+      <div className="hidden h-screen w-1/2 items-center justify-center bg-blue-600 p-10 text-white md:flex">
         <div>
           <div className="flex items-center gap-3 mb-6">
             <HeartPulse size={44} className="text-white/90" />
@@ -74,8 +74,8 @@ const Login = () => {
       </div>
 
       {/* RIGHT SIDE AUTH CARD */}
-      <div className="flex w-full md:w-1/2 items-center justify-center bg-gradient-to-br from-gray-100 to-gray-300 px-6">
-        <div className="bg-white shadow-2xl rounded-2xl p-8 w-full max-w-md border border-gray-100">
+      <div className="flex min-h-screen w-full items-center justify-center bg-gray-50 px-4 py-8 md:w-1/2 md:px-6">
+        <div className="w-full max-w-md rounded-2xl border border-gray-100 bg-white p-5 shadow-xl sm:p-8">
 
           {/* Heading with icon */}
           <div className="flex items-center justify-center gap-2 mb-6">
@@ -89,7 +89,7 @@ const Login = () => {
           </div>
 
           {/* TOGGLE */}
-          <div className="relative flex bg-gray-200 rounded-full p-1 mb-6">
+          <div className="relative mb-6 flex rounded-full bg-gray-100 p-1">
             <div
               className={`absolute top-1 bottom-1 w-1/2 bg-white rounded-full shadow transition-all duration-300 ${
                 mode === "login" ? "left-1" : "left-1/2"
@@ -126,7 +126,7 @@ const Login = () => {
                   <input
                     type="text"
                     placeholder="Full Name"
-                    className="w-full pl-9 p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="min-h-11 w-full rounded-xl border border-gray-200 bg-gray-50 p-3 pl-9 focus:outline-none focus:ring-2 focus:ring-blue-300"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     required
@@ -139,7 +139,7 @@ const Login = () => {
                 <input
                   type="email"
                   placeholder="Email Address"
-                  className="w-full pl-9 p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="min-h-11 w-full rounded-xl border border-gray-200 bg-gray-50 p-3 pl-9 focus:outline-none focus:ring-2 focus:ring-blue-300"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
@@ -151,7 +151,7 @@ const Login = () => {
                 <input
                   type="password"
                   placeholder="Password"
-                  className="w-full pl-9 p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="min-h-11 w-full rounded-xl border border-gray-200 bg-gray-50 p-3 pl-9 focus:outline-none focus:ring-2 focus:ring-blue-300"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
@@ -171,7 +171,7 @@ const Login = () => {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 hover:scale-[1.02] active:scale-[0.98] transition transform duration-200 disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-blue-600 py-3 text-white transition hover:bg-blue-700 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
             >
               {loading ? (
                 "Please wait..."

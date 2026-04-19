@@ -37,9 +37,15 @@ app.get("/", (req, res) => {
 app.use((err, req, res, next) => {
   console.error(`[ERROR] ${req.method} ${req.path}:`, err.message);
 
-  res.status(err.status || 500).json({
+  const status = err.status || err.statusCode || 500;
+  const message =
+    status >= 500
+      ? "Something went wrong. Please try again."
+      : err.message || "Request failed";
+
+  res.status(status).json({
     success: false,
-    message: err.message || "Internal server error",
+    message,
   });
 });
 

@@ -98,12 +98,12 @@ const VerifyEmail = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 px-4">
+    <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4 py-8">
       <motion.div
         initial={{ opacity: 0, y: 30 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4 }}
-        className="bg-white shadow-2xl rounded-2xl p-8 w-full max-w-md border border-gray-100"
+        className="w-full max-w-md rounded-2xl border border-gray-100 bg-white p-5 shadow-xl sm:p-8"
       >
         {/* Header */}
         <div className="flex flex-col items-center mb-6">
@@ -117,7 +117,7 @@ const VerifyEmail = () => {
         </div>
 
         <form onSubmit={handleVerify} className="space-y-6">
-          <div className="flex justify-between gap-2" onPaste={handlePaste}>
+          <div className="grid grid-cols-6 gap-2" onPaste={handlePaste}>
             {otp.map((digit, index) => (
               <input
                 key={index}
@@ -127,7 +127,7 @@ const VerifyEmail = () => {
                 value={digit}
                 onChange={(e) => handleOtpChange(e.target.value, index)}
                 onKeyDown={(e) => handleOtpBackspace(e, index)}
-                className="w-12 h-12 text-center text-lg font-semibold border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 shadow-sm transition-all duration-200"
+                className="h-11 w-full rounded-xl border border-gray-200 bg-gray-50 text-center text-lg font-semibold transition-all duration-200 focus:border-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-300 sm:h-12"
               />
             ))}
           </div>
@@ -135,7 +135,7 @@ const VerifyEmail = () => {
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-blue-600 py-3 text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <ShieldCheck size={16} />
             {loading ? "Verifying..." : "Verify Email"}

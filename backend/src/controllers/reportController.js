@@ -16,6 +16,25 @@ function sendError(res, status, message) {
   });
 }
 
+function getPagination(query) {
+  const page = Number.parseInt(query.page, 10) || 1;
+  const limit = Number.parseInt(query.limit, 10) || 10;
+
+  return {
+    page: Math.max(page, 1),
+    limit: Math.min(Math.max(limit, 1), 100),
+  };
+}
+
+function sendServerError(res, error, fallbackMessage = "Something went wrong. Please try again.") {
+  if (error.name === "ValidationError") {
+    const messages = Object.values(error.errors).map((e) => e.message);
+    return sendError(res, 400, messages[0]);
+  }
+
+  return sendError(res, 500, fallbackMessage);
+}
+
 function isValidReportId(id) {
   return mongoose.isValidObjectId(id);
 }
@@ -244,11 +263,16 @@ function getCachedAnalysis(report) {
     return null;
   }
 
-  return {
-    success: true,
+  const data = {
     summary: report.aiSummary,
     extractedValues: normalizeExtractedValues(report.extractedValues),
     cached: true,
+  };
+
+  return {
+    success: true,
+    ...data,
+    data,
   };
 }
 
@@ -282,6 +306,10 @@ export const uploadReport = async (req, res) => {
       return sendError(res, 400, "Report title is required");
     }
 
+    if (reportDate && Number.isNaN(new Date(reportDate).getTime())) {
+      return sendError(res, 400, "Invalid report date");
+    }
+
     const report = await Report.create({
       user: req.userId,
       title: title.trim(),
@@ -299,22 +327,33 @@ export const uploadReport = async (req, res) => {
       data: formatReport(report),
     });
   } catch (error) {
-    return sendError(res, 500, error.message);
+    return sendServerError(res, error, "Failed to upload report");
   }
 };
 
 export const getReports = async (req, res) => {
   try {
-    const reports = await Report.find({ user: req.userId })
-      .sort({ reportDate: -1 });
+    const { page, limit } = getPagination(req.query);
+    const filter = { user: req.userId };
+    const total = await Report.countDocuments(filter);
+    const reports = await Report.find(filter)
+      .sort({ reportDate: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit);
 
     return res.json({
       success: true,
       count: reports.length,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
       data: reports.map(formatReport),
     });
   } catch (error) {
-    return sendError(res, 500, error.message);
+    return sendServerError(res, error, "Failed to fetch reports");
   }
 };
 
@@ -331,7 +370,7 @@ export const getReport = async (req, res) => {
       data: formatReport(report),
     });
   } catch (error) {
-    return sendError(res, 500, error.message);
+    return sendServerError(res, error, "Failed to fetch report");
   }
 };
 
@@ -362,7 +401,7 @@ export const viewReportFile = async (req, res) => {
 
     return res.send(fileBuffer);
   } catch (error) {
-    return sendError(res, 500, error.message || "Failed to open report file");
+    return sendServerError(res, error, "Failed to open report file");
   }
 };
 
@@ -385,7 +424,7 @@ export const deleteReport = async (req, res) => {
       message: "Report deleted",
     });
   } catch (error) {
-    return sendError(res, 500, error.message);
+    return sendServerError(res, error, "Failed to delete report");
   }
 };
 
@@ -452,14 +491,19 @@ export const analyzeReport = async (req, res) => {
     report.analyzedAt = new Date();
     await report.save();
 
-    return res.json({
-      success: true,
+    const data = {
       summary: savedSummary,
       extractedValues,
       cached: false,
+    };
+
+    return res.json({
+      success: true,
+      ...data,
+      data,
     });
   } catch (error) {
-    console.error("Report analysis error:", error);
-    return sendError(res, 500, error.message || "Failed to analyze report");
+    console.error("Report analysis error:", error.message);
+    return sendServerError(res, error, "Failed to analyze report");
   }
 };

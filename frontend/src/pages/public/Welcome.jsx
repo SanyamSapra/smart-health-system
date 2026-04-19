@@ -34,10 +34,10 @@ const Welcome = () => {
   }, []);
 
   return (
-    <div className="flex min-h-screen">
+    <div className="flex min-h-screen flex-col md:flex-row">
 
       {/* LEFT */}
-      <div className="w-1/2 bg-gradient-to-br from-blue-600 to-indigo-800 flex flex-col justify-center items-center text-white p-10">
+      <div className="flex w-full flex-col items-center justify-center bg-blue-600 p-6 text-white md:w-1/2 md:p-10">
         <motion.div
           initial={{ x: -100, opacity: 0 }}
           animate={{ x: 0, opacity: 1 }}
@@ -45,10 +45,10 @@ const Welcome = () => {
           className="flex flex-col items-center"
         >
           <HeartPulse size={56} className="mb-5 text-white/90" />
-          <h1 className="text-5xl font-bold mb-4 text-center">
+          <h1 className="mb-4 text-center text-3xl font-bold sm:text-4xl md:text-5xl">
             Smart Health System
           </h1>
-          <p className="text-lg text-center max-w-md opacity-90">
+          <p className="max-w-md text-center text-base opacity-90 md:text-lg">
             Your personal health companion. Monitor, manage and improve your
             lifestyle with intelligent insights.
           </p>
@@ -56,7 +56,7 @@ const Welcome = () => {
       </div>
 
       {/* RIGHT */}
-      <div className="w-1/2 flex flex-col justify-center items-center bg-gray-50 p-10 gap-8">
+      <div className="flex w-full flex-1 flex-col items-center justify-center gap-8 bg-gray-50 p-6 md:w-1/2 md:p-10">
 
         {/* Cycling feature */}
         <div className="h-12 flex items-center justify-center">
@@ -67,7 +67,7 @@ const Welcome = () => {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
               transition={{ duration: 0.5 }}
-              className="text-xl font-medium text-gray-700 text-center flex items-center gap-2"
+              className="flex items-center gap-2 text-center text-base font-medium text-gray-700 sm:text-xl"
             >
               <CheckCircle2 size={22} className="text-blue-600 shrink-0" />
               {features[featureIndex]}
@@ -89,7 +89,7 @@ const Welcome = () => {
 
         <button
           onClick={() => navigate("/login")}
-          className="px-8 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium text-lg flex items-center gap-2"
+          className="flex min-h-11 items-center gap-2 rounded-xl bg-blue-600 px-8 py-3 text-base font-medium text-white transition hover:bg-blue-700 md:text-lg"
         >
           Get Started <ArrowRight size={18} />
         </button>

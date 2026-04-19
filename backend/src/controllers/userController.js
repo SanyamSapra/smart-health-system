@@ -1,12 +1,25 @@
 import User from "../models/User.js";
 import HealthLog from "../models/HealthLog.js";
 import { calculateAge } from "../utils/healthInsights.js";
+import { checkAndSendDailyReminder } from "../utils/dailyReminder.js";
+
+function sendControllerError(res, error) {
+  if (error.name === "ValidationError") {
+    const messages = Object.values(error.errors).map((e) => e.message);
+    return res.status(400).json({ success: false, message: messages[0] });
+  }
+
+  return res.status(500).json({
+    success: false,
+    message: "Something went wrong. Please try again.",
+  });
+}
 
 // Get logged-in user's profile data
 export const getUserData = async (req, res) => {
   try {
     const user = await User.findById(req.userId).select(
-      "name email isAccountVerified profileCompleted gender height dateOfBirth bloodGroup activityLevel dietType smoking alcohol medicalConditions"
+      "name email isAccountVerified profileCompleted gender height dateOfBirth bloodGroup activityLevel dietType smoking alcohol medicalConditions lastReminderSentAt"
     );
 
     if (!user) {
@@ -16,29 +29,33 @@ export const getUserData = async (req, res) => {
     }
 
     const age = calculateAge(user.dateOfBirth);
+    await checkAndSendDailyReminder(user);
+
+    const userData = {
+      id: user._id,
+      name: user.name,
+      email: user.email,
+      isAccountVerified: user.isAccountVerified,
+      profileCompleted: user.profileCompleted,
+      gender: user.gender,
+      height: user.height,
+      dateOfBirth: user.dateOfBirth,
+      age,
+      bloodGroup: user.bloodGroup,
+      activityLevel: user.activityLevel,
+      dietType: user.dietType,
+      smoking: user.smoking,
+      alcohol: user.alcohol,
+      medicalConditions: user.medicalConditions,
+    };
 
     return res.json({
       success: true,
-      userData: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        isAccountVerified: user.isAccountVerified,
-        profileCompleted: user.profileCompleted,
-        gender: user.gender,
-        height: user.height,
-        dateOfBirth: user.dateOfBirth,
-        age,
-        bloodGroup: user.bloodGroup,
-        activityLevel: user.activityLevel,
-        dietType: user.dietType,
-        smoking: user.smoking,
-        alcohol: user.alcohol,
-        medicalConditions: user.medicalConditions,
-      },
+      userData,
+      data: userData,
     });
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    return sendControllerError(res, error);
   }
 };
 
@@ -104,7 +121,7 @@ export const completeProfile = async (req, res) => {
       message: "Profile completed successfully",
     });
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    return sendControllerError(res, error);
   }
 };
 
@@ -160,8 +177,9 @@ export const updateProfile = async (req, res) => {
       success: true,
       message: "Profile updated successfully",
       userData: user,
+      data: user,
     });
   } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    return sendControllerError(res, error);
   }
 };

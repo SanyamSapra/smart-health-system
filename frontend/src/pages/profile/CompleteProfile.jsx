@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 
 const inputStyle =
-  "w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500";
+  "min-h-11 w-full rounded-xl border border-gray-200 bg-gray-50 p-3 focus:outline-none focus:ring-2 focus:ring-blue-300";
 
 // Label with icon used above form inputs
 const FieldLabel = ({ icon: Icon, label }) => (
@@ -101,18 +101,18 @@ const CompleteProfile = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 px-4">
+    <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4 py-8">
       <motion.div
         initial={{ opacity: 0, y: 30 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4 }}
-        className="bg-white shadow-2xl rounded-2xl p-8 w-full max-w-lg border border-gray-100"
+        className="w-full max-w-lg rounded-2xl border border-gray-100 bg-white p-5 shadow-xl sm:p-8"
       >
         <div className="text-sm text-blue-600 font-medium mb-2">Step 1 of 1</div>
 
         <div className="flex items-center gap-2 mb-2">
           <UserCheck size={22} className="text-blue-600" />
-          <h2 className="text-2xl font-semibold">Complete Your Health Profile</h2>
+          <h2 className="text-xl font-semibold text-gray-800 sm:text-2xl">Complete Your Health Profile</h2>
         </div>
 
         <p className="text-gray-500 text-sm mb-6">
@@ -159,14 +159,14 @@ const CompleteProfile = () => {
           {/* Height & Weight */}
           <div>
             <FieldLabel icon={Ruler} label="Height & Weight" />
-            <div className="flex gap-4">
+            <div className="flex flex-col gap-4 sm:flex-row">
 
               <div className="relative w-full">
                 <Ruler size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                 <input
                   type="number"
                   placeholder="Height (cm)"
-                  className="w-full pl-9 p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="min-h-11 w-full rounded-xl border border-gray-200 bg-gray-50 p-3 pl-9 focus:outline-none focus:ring-2 focus:ring-blue-300"
                   value={height}
                   onChange={(e) => setHeight(e.target.value)}
                   min="50"
@@ -181,7 +181,7 @@ const CompleteProfile = () => {
                   type="number"
                   step="0.1"
                   placeholder="Weight (kg)"
-                  className="w-full pl-9 p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="min-h-11 w-full rounded-xl border border-gray-200 bg-gray-50 p-3 pl-9 focus:outline-none focus:ring-2 focus:ring-blue-300"
                   value={weight}
                   onChange={(e) => setWeight(e.target.value)}
                   min="20"
@@ -245,7 +245,7 @@ const CompleteProfile = () => {
           {/* Lifestyle habits */}
           <div>
             <FieldLabel icon={Cigarette} label="Lifestyle Habits" />
-            <div className="flex gap-6">
+            <div className="flex flex-col gap-3 sm:flex-row sm:gap-6">
               <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
                 <input
                   type="checkbox"
@@ -285,7 +285,7 @@ const CompleteProfile = () => {
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-blue-600 py-3 text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {loading ? "Saving..." : (
               <>

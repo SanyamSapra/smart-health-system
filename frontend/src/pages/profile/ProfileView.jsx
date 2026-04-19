@@ -38,9 +38,9 @@ const ProfileItem = ({ icon: Icon, label, value }) => (
 
 // Health metric summary box
 const HealthCard = ({ label, value, unit, color }) => (
-  <div className="bg-gray-50 rounded-xl p-3 text-center">
-    <p className="text-xs text-gray-400 mb-1">{label}</p>
-    <p className={`text-lg font-bold ${color}`}>{value ?? "—"}</p>
+  <div className="bg-gray-50 rounded-xl p-2.5 sm:p-3 text-center">
+    <p className="text-xs text-gray-400 mb-1 truncate">{label}</p>
+    <p className={`text-base sm:text-lg font-bold leading-tight break-all ${color}`}>{value ?? "—"}</p>
     {unit && <p className="text-xs text-gray-400">{unit}</p>}
   </div>
 );
@@ -138,10 +138,10 @@ const ProfileView = () => {
   const bmiInfo = getBmiStatus(healthData?.bmi);
 
   const inputClass =
-    "w-full border border-gray-200 rounded-lg p-2.5 text-sm bg-gray-50 focus:ring-2 focus:ring-blue-300 outline-none";
+    "min-h-11 w-full rounded-xl border border-gray-200 bg-gray-50 p-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-300";
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
+    <div className="min-h-screen bg-gray-50 p-4 md:p-6">
       <div className="max-w-3xl mx-auto space-y-5">
 
         <div>
@@ -155,17 +155,17 @@ const ProfileView = () => {
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 flex items-center gap-5"
+          className="flex flex-col gap-4 rounded-2xl border border-gray-100 bg-white p-5 text-center shadow-sm sm:flex-row sm:items-center sm:gap-5 sm:text-left md:p-6"
         >
           <div className="w-16 h-16 rounded-full bg-blue-600 text-white flex items-center justify-center text-2xl font-bold">
             {userData?.name?.charAt(0)?.toUpperCase() || "U"}
           </div>
 
-          <div className="flex-1">
+          <div className="min-w-0 flex-1">
             <h2 className="text-lg font-bold text-gray-800">
               {userData?.name || "User"}
             </h2>
-            <div className="flex items-center gap-1.5 text-sm text-gray-400 mt-0.5">
+            <div className="mt-0.5 flex items-center justify-center gap-1.5 break-all text-sm text-gray-500 sm:justify-start">
               <Mail size={13} />
               {userData?.email}
             </div>
@@ -197,10 +197,10 @@ const ProfileView = () => {
           className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5"
         >
           <h3 className="text-sm font-bold text-gray-700 mb-4 flex items-center gap-2">
-            <Activity size={15} className="text-blue-500" />
+            <Activity size={15} className="text-blue-600" />
             Latest Health Stats
           </h3>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
             <HealthCard
               label="BMI"
               value={
@@ -230,7 +230,7 @@ const ProfileView = () => {
               label="Sugar"
               value={healthData?.sugarLevel}
               unit="mg/dL"
-              color="text-purple-600"
+              color="text-blue-600"
             />
           </div>
         </motion.div>
@@ -241,9 +241,9 @@ const ProfileView = () => {
           animate={{ opacity: 1 }}
           className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5"
         >
-          <div className="flex items-center justify-between mb-4">
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <h3 className="text-sm font-bold text-gray-700 flex items-center gap-2">
-              <Stethoscope size={15} className="text-blue-500" />
+              <Stethoscope size={15} className="text-blue-600" />
               Health Profile
             </h3>
             {!isEditing ? (
@@ -254,7 +254,7 @@ const ProfileView = () => {
                 <Pencil size={12} /> Edit
               </button>
             ) : (
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <button
                   onClick={() => setIsEditing(false)}
                   className="text-xs font-semibold text-gray-500 bg-gray-100 px-3 py-1.5 rounded-lg hover:bg-gray-200 transition"
@@ -329,7 +329,7 @@ const ProfileView = () => {
             </div>
           ) : (
             <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                   <label className="text-xs text-gray-500 mb-1 block">
                     Height (cm)
@@ -368,7 +368,7 @@ const ProfileView = () => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                   <label className="text-xs text-gray-500 mb-1 block">
                     Activity Level
@@ -409,7 +409,7 @@ const ProfileView = () => {
                 </div>
               </div>
 
-              <div className="flex gap-6">
+              <div className="flex flex-col gap-3 sm:flex-row sm:gap-6">
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
                     type="checkbox"
@@ -459,7 +459,7 @@ const ProfileView = () => {
         {/* Account settings */}
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
           <h3 className="text-sm font-bold text-gray-700 mb-4 flex items-center gap-2">
-            <User size={15} className="text-blue-500" />
+              <User size={15} className="text-blue-600" />
             Account Settings
           </h3>
           <div className="flex flex-col sm:flex-row gap-3">

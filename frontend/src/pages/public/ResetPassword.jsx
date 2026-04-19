@@ -112,10 +112,10 @@ const ResetPassword = () => {
   ];
 
   return (
-    <div className="min-h-screen flex">
+    <div className="flex min-h-screen flex-col md:flex-row">
 
       {/* LEFT PANEL */}
-      <div className="hidden md:flex w-1/2 bg-gradient-to-b from-blue-600 to-indigo-800 items-center justify-center">
+      <div className="hidden w-1/2 items-center justify-center bg-blue-600 md:flex">
         <div className="text-white px-12">
           <div className="flex items-center gap-3 mb-6">
             <HeartPulse size={44} className="text-white/90" />
@@ -126,16 +126,16 @@ const ResetPassword = () => {
       </div>
 
       {/* RIGHT PANEL */}
-      <div className="flex w-full md:w-1/2 items-center justify-center bg-gray-100">
+      <div className="flex min-h-screen w-full items-center justify-center bg-gray-50 px-4 py-8 md:w-1/2">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3 }}
-          className="bg-white p-8 rounded-2xl shadow-xl w-96"
+          className="w-full max-w-md rounded-2xl border border-gray-100 bg-white p-5 shadow-xl sm:p-8"
         >
 
           {/* Step indicator */}
-          <div className="flex items-center justify-center gap-2 mb-7">
+          <div className="mb-7 flex flex-wrap items-center justify-center gap-2">
             {steps.map(({ num, icon: Icon, label }, i) => (
               <div key={num} className="flex items-center gap-2">
                 <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold transition-all ${step === num
@@ -165,7 +165,7 @@ const ResetPassword = () => {
                 <input
                   type="email"
                   placeholder="Email Address"
-                  className="w-full pl-9 px-4 py-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="min-h-11 w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 pl-9 focus:outline-none focus:ring-2 focus:ring-blue-300"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
@@ -201,7 +201,7 @@ const ResetPassword = () => {
               <p className="text-xs text-gray-400 text-center mb-6">
                 Enter the 6-digit code sent to {email}
               </p>
-              <div className="flex justify-between mb-6" onPaste={handleOtpPaste}>
+              <div className="mb-6 grid grid-cols-6 gap-2" onPaste={handleOtpPaste}>
                 {otp.map((digit, index) => (
                   <input
                     key={index}
@@ -211,7 +211,7 @@ const ResetPassword = () => {
                     value={digit}
                     onChange={(e) => handleOtpChange(e.target.value, index)}
                     onKeyDown={(e) => handleOtpBackspace(e, index)}
-                    className="w-12 h-12 text-center text-lg font-semibold border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 shadow-sm transition-all duration-200"
+                    className="h-11 w-full rounded-xl border border-gray-200 bg-gray-50 text-center text-lg font-semibold transition-all duration-200 focus:border-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-300 sm:h-12"
                   />
                 ))}
               </div>
@@ -237,7 +237,7 @@ const ResetPassword = () => {
                 <input
                   type="password"
                   placeholder="New Password (min. 6 characters)"
-                  className="w-full pl-9 px-4 py-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="min-h-11 w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 pl-9 focus:outline-none focus:ring-2 focus:ring-blue-300"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                   required

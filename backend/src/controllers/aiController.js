@@ -17,11 +17,16 @@ function getTodayKey() {
 }
 
 function sendFallbackChat(res) {
-  return res.json({
-    success: true,
+  const data = {
     reply:
       "Please stay hydrated, eat balanced meals, and continue tracking your health regularly.\nIf you feel unwell or your readings stay abnormal, please speak with a doctor.",
     fallback: true,
+  };
+
+  return res.json({
+    success: true,
+    ...data,
+    data,
   });
 }
 
@@ -86,7 +91,60 @@ async function getUserHealthContext(userId, days = 30) {
   };
 }
 
-function getChatPrompt({ user, latestLog, latestWeight, age, bmi, message }) {
+function getAbnormalSummary({ latestLog, bmi }) {
+  const items = [];
+
+  if (bmi != null) {
+    if (bmi < 18.5) items.push(`BMI is low (${bmi})`);
+    else if (bmi >= 30) items.push(`BMI is high (${bmi})`);
+    else if (bmi >= 25) items.push(`BMI is above ideal range (${bmi})`);
+  }
+
+  if (latestLog?.systolicBP != null || latestLog?.diastolicBP != null) {
+    if (latestLog.systolicBP >= 140 || latestLog.diastolicBP >= 90) {
+      items.push(
+        `blood pressure is high (${latestLog.systolicBP}/${latestLog.diastolicBP})`
+      );
+    } else if (latestLog.systolicBP >= 130 || latestLog.diastolicBP >= 80) {
+      items.push(
+        `blood pressure is slightly elevated (${latestLog.systolicBP}/${latestLog.diastolicBP})`
+      );
+    }
+  }
+
+  if (latestLog?.sugarLevel != null) {
+    if (latestLog.sugarLevel >= 200) {
+      items.push(`sugar level is high (${latestLog.sugarLevel} mg/dL)`);
+    } else if (latestLog.sugarLevel >= 126) {
+      items.push(`sugar level is above ideal range (${latestLog.sugarLevel} mg/dL)`);
+    }
+  }
+
+  return items.length ? items.join("; ") : "No clearly abnormal latest values";
+}
+
+function getChatPrompt({
+  user,
+  latestLog,
+  latestWeight,
+  logs,
+  trends,
+  age,
+  bmi,
+  message,
+}) {
+  const recentSummary = logs
+    .slice(-7)
+    .map(
+      (log) =>
+        `${new Date(log.loggedAt).toLocaleDateString("en-IN")}: weight ${
+          log.weight ?? "-"
+        }, BP ${log.systolicBP ?? "-"}/${log.diastolicBP ?? "-"}, sugar ${
+          log.sugarLevel ?? "-"
+        }`
+    )
+    .join("\n");
+
   return `You are a helpful health assistant for a student project.
 
 User profile:
@@ -106,12 +164,25 @@ Latest health data:
 - Sugar level: ${latestLog?.sugarLevel ?? "N/A"} mg/dL
 - BMI: ${bmi ?? "Not available"}
 
+Last 7 days:
+${recentSummary || "No recent health logs"}
+
+Trend summary:
+${trends.length ? trends.join("; ") : "No clear trend available"}
+
+Priority context:
+${getAbnormalSummary({ latestLog, bmi })}
+
 User question:
 ${message}
 
 Rules:
-- Reply in simple language (max 4–5 lines)
-- Give safe general advice
+- Reply in simple language in 3–5 short lines
+- Prioritize abnormal values only when relevant to the user's question
+- Use trends when they add useful context
+- Do not repeat the same warning unless it is important for this question
+- Do not mention metrics unless relevant
+- Give safe preventive health advice
 - Do not diagnose
 
 IMPORTANT:
@@ -150,6 +221,14 @@ ${recentSummary || "No recent logs"}
 
 Current trends:
 ${trends.length ? trends.join("; ") : "No clear trend"}
+
+Rules:
+- Prioritize abnormal BMI, blood pressure, or sugar values
+- Use trends if available
+- Avoid repeating the same warning in multiple fields
+- Keep every insight and tip short
+- Do not mention metrics unless they are relevant
+- Do not give a diagnosis
 
 Return JSON only:
 {"insights":["","",""],"tips":["","",""],"warning":""}`;
@@ -206,12 +285,15 @@ export const chatWithAssistant = async (req, res) => {
     }
 
     const context = await getUserHealthContext(req.userId, 7);
+    const trends = getTrendMessages(context.logs);
     const result = await ai.models.generateContent({
       model: GEMINI_MODEL,
       contents: getChatPrompt({
         user: context.user,
         latestLog: context.latestLog,
         latestWeight: context.latestWeight,
+        logs: context.logs,
+        trends,
         age: context.age,
         bmi: context.bmi,
         message,
@@ -223,11 +305,16 @@ export const chatWithAssistant = async (req, res) => {
       return sendFallbackChat(res);
     }
 
-    return res.json({
-      success: true,
+    const data = {
       reply,
       remainingRequests: CHAT_LIMIT_PER_DAY - user.aiChatUsage.count,
       fallback: false,
+    };
+
+    return res.json({
+      success: true,
+      ...data,
+      data,
     });
   } catch (error) {
     console.error("AI chat error:", error.message);

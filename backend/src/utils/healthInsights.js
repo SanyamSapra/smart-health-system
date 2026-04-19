@@ -50,6 +50,58 @@ export function calculateHealthScore({ bmi, systolicBP, diastolicBP, sugarLevel 
   return { score, status };
 }
 
+export function getHealthStatus({ bmi, systolicBP, diastolicBP, sugarLevel }) {
+  const highRisk =
+    (bmi != null && (bmi < 16 || bmi >= 35)) ||
+    (systolicBP != null && systolicBP >= 160) ||
+    (diastolicBP != null && diastolicBP >= 100) ||
+    (sugarLevel != null && sugarLevel >= 200);
+
+  if (highRisk) {
+    return "High Risk";
+  }
+
+  const needsAttention =
+    (bmi != null && (bmi < 18.5 || bmi >= 25)) ||
+    (systolicBP != null && systolicBP >= 130) ||
+    (diastolicBP != null && diastolicBP >= 80) ||
+    (sugarLevel != null && sugarLevel >= 126);
+
+  return needsAttention ? "Needs Attention" : "Good";
+}
+
+export function countLoggedDaysLast7(logs = []) {
+  const sevenDaysAgo = new Date();
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
+  sevenDaysAgo.setHours(0, 0, 0, 0);
+
+  const days = new Set();
+
+  logs.forEach((log) => {
+    const loggedAt = new Date(log.loggedAt);
+    if (loggedAt >= sevenDaysAgo) {
+      days.add(loggedAt.toISOString().split("T")[0]);
+    }
+  });
+
+  return days.size;
+}
+
+export function getMissingDataWarnings(logs = []) {
+  const warnings = [];
+  const hasWeight = logs.some((log) => log.weight != null);
+  const hasBP = logs.some(
+    (log) => log.systolicBP != null && log.diastolicBP != null
+  );
+  const hasSugar = logs.some((log) => log.sugarLevel != null);
+
+  if (!hasBP) warnings.push("No BP data in last 7 days");
+  if (!hasWeight) warnings.push("No weight data recently");
+  if (!hasSugar) warnings.push("No sugar data in last 7 days");
+
+  return warnings;
+}
+
 function getTrendDirection(change, positiveMessage, negativeMessage, stableMessage) {
   if (change > 0) return positiveMessage;
   if (change < 0) return negativeMessage;

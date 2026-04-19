@@ -132,6 +132,11 @@ const userSchema = new mongoose.Schema(
         default: 0,
       },
     },
+
+    lastReminderSentAt: {
+      type: Date,
+      default: null,
+    },
   },
   { timestamps: true }
 );
