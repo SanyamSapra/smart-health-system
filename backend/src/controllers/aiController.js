@@ -1,4 +1,5 @@
 import ai, { hasGeminiKey } from "../config/gemini.js";
+import fetch from "node-fetch";
 import User from "../models/User.js";
 import HealthLog from "../models/HealthLog.js";
 import {
@@ -11,6 +12,7 @@ import {
 const GEMINI_MODEL = "gemini-3-flash-preview";
 const INSIGHTS_CACHE_HOURS = 24;
 const CHAT_LIMIT_PER_DAY = 10;
+const DISEASE_API_URL = process.env.DISEASE_API_URL || "http://localhost:5050";
 
 function getTodayKey() {
   return new Date().toISOString().split("T")[0];
@@ -46,7 +48,7 @@ function buildWarning(log) {
 
 async function getUserHealthContext(userId, days = 30) {
   const user = await User.findById(userId).select(
-    "gender dateOfBirth height medicalConditions aiInsights aiChatUsage"
+    "gender dateOfBirth height bloodGroup activityLevel dietType smoking alcohol medicalConditions aiInsights aiChatUsage"
   );
 
   const latestLog = await HealthLog.findOne({ user: userId }).sort({ loggedAt: -1 });
@@ -88,6 +90,34 @@ async function getUserHealthContext(userId, days = 30) {
     latestWeight,
     bmi,
     healthScore,
+  };
+}
+
+function buildDiseasePredictionContext(context, userInput = {}) {
+  return {
+    profile: {
+      age: context.age,
+      gender: context.user?.gender || null,
+      height: context.user?.height ?? null,
+      bloodGroup: context.user?.bloodGroup || null,
+      activityLevel: context.user?.activityLevel || null,
+      dietType: context.user?.dietType || null,
+      smoking: Boolean(context.user?.smoking),
+      alcohol: Boolean(context.user?.alcohol),
+      medicalConditions: context.user?.medicalConditions || [],
+    },
+    latestVitals: {
+      weight: context.latestWeight,
+      bmi: context.bmi,
+      systolicBP: context.latestLog?.systolicBP ?? null,
+      diastolicBP: context.latestLog?.diastolicBP ?? null,
+      sugarLevel: context.latestLog?.sugarLevel ?? null,
+      loggedAt: context.latestLog?.loggedAt ?? null,
+    },
+    symptomDetails: {
+      duration: typeof userInput.duration === "string" ? userInput.duration : "",
+      severity: typeof userInput.severity === "string" ? userInput.severity : "",
+    },
   };
 }
 
@@ -419,6 +449,65 @@ export const getDashboardInsights = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Failed to generate insights",
+    });
+  }
+};
+
+export const predictDisease = async (req, res) => {
+  try {
+    const symptoms = Array.isArray(req.body.symptoms)
+      ? req.body.symptoms.filter((item) => typeof item === "string" && item.trim())
+      : [];
+    const extraText = typeof req.body.extraText === "string" ? req.body.extraText.trim() : "";
+    const duration = typeof req.body.duration === "string" ? req.body.duration.trim() : "";
+    const severity = typeof req.body.severity === "string" ? req.body.severity.trim() : "";
+
+    if (!symptoms.length && !extraText) {
+      return res.status(400).json({
+        success: false,
+        message: "Select at least one symptom or describe your symptoms.",
+      });
+    }
+
+    const context = await getUserHealthContext(req.userId, 30);
+    if (!context.user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    const clinicalContext = buildDiseasePredictionContext(context, { duration, severity });
+
+    const response = await fetch(`${DISEASE_API_URL}/api/disease/predict`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        symptoms,
+        extra_text: extraText,
+        clinical_context: clinicalContext,
+      }),
+    });
+
+    const data = await response.json().catch(() => null);
+    if (!response.ok || !data?.success) {
+      return res.status(response.status || 502).json({
+        success: false,
+        message: data?.message || "Disease prediction service is unavailable.",
+      });
+    }
+
+    return res.json({
+      success: true,
+      data: {
+        predictions: data.predictions || [],
+        topDisease: data.topDisease,
+        predictionMeta: data.predictionMeta,
+        patientContext: data.patientContext || clinicalContext,
+      },
+    });
+  } catch (error) {
+    console.error("Disease prediction error:", error.message);
+    return res.status(502).json({
+      success: false,
+      message: "Disease prediction service is unavailable. Please start the Python service.",
     });
   }
 };

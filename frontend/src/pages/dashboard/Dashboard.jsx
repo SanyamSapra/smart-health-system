@@ -55,7 +55,7 @@ const sugarBarColor = (v) => {
 const CustomTooltip = ({ active, payload, label, unit, mode }) => {
   if (!active || !payload?.length) return null;
   return (
-    <div className="bg-gray-900 text-white px-3 py-2 rounded-xl shadow-xl text-sm min-w-[130px]">
+    <div className="bg-gray-900 text-white px-3 py-2 rounded-xl shadow-xl text-sm min-w-32.5">
       <p className="text-gray-400 mb-1 text-xs">{formatChartDate(label, mode)}</p>
       {payload.map((entry, i) => (
         <p key={i} style={{ color: entry.color }} className="font-semibold">
@@ -564,8 +564,7 @@ const Dashboard = () => {
             <p className="text-sm font-semibold text-gray-800">You logged {summary?.streak || 0} days this week</p>
             <p className="mt-1 text-xs text-gray-500">Keep a simple streak for better weekly trends.</p>
           </div>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-            <QuickAction icon={Plus}   label="Add Log"       onClick={() => setShowForm(true)} />
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             <QuickAction icon={Upload} label="Upload Report" onClick={() => navigate("/app/reports")} />
             <QuickAction icon={Bot}    label="Ask AI"        onClick={() => navigate("/app/chatbot")} />
           </div>
@@ -634,30 +633,26 @@ const Dashboard = () => {
             </div>
             {insightsLoading ? (
               <Skeleton h="h-40" />
+            ) : !insights?.insights?.length && !insights?.tips?.length && !insights?.warning ? (
+              <p className="text-sm text-gray-400">No insights yet. Log more data to generate AI insights.</p>
             ) : (
-              <div className="space-y-2">
+              <ul className="space-y-2.5 pl-4">
                 {(insights?.insights || []).map((item) => (
-                  <div key={item} className="flex items-start gap-2 rounded-xl bg-blue-50 px-3 py-2 text-sm text-blue-700">
-                    <span className="shrink-0">💡</span>
-                    <span>{item}</span>
-                  </div>
+                  <li key={item} className="list-disc text-sm leading-relaxed text-blue-700 marker:text-blue-500">
+                    {item}
+                  </li>
                 ))}
                 {(insights?.tips || []).map((item) => (
-                  <div key={item} className="flex items-start gap-2 rounded-xl bg-green-50 px-3 py-2 text-sm text-green-700">
-                    <span className="shrink-0">✅</span>
-                    <span>{item}</span>
-                  </div>
+                  <li key={item} className="list-disc text-sm leading-relaxed text-green-700 marker:text-green-500">
+                    {item}
+                  </li>
                 ))}
                 {insights?.warning && (
-                  <div className="flex items-start gap-2 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">
-                    <span className="shrink-0">⚠️</span>
-                    <span>{insights.warning}</span>
-                  </div>
+                  <li className="list-disc text-sm leading-relaxed text-red-600 marker:text-red-500">
+                    {insights.warning}
+                  </li>
                 )}
-                {!insights?.insights?.length && !insights?.tips?.length && !insights?.warning && (
-                  <p className="text-sm text-gray-400">No insights yet. Log more data to generate AI insights.</p>
-                )}
-              </div>
+              </ul>
             )}
           </motion.div>
         </div>

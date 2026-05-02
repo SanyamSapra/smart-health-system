@@ -6,6 +6,7 @@ import {
   User,
   FolderOpen,
   Bot,
+  HeartPulse,
   LogOut,
   ChevronLeft,
   ChevronRight,
@@ -24,6 +25,7 @@ const Sidebar = () => {
 
   const navItems = [
     { path: "/app/dashboard", icon: LayoutDashboard, label: "Dashboard" },
+    { path: "/app/disease-prediction", icon: HeartPulse, label: "Disease" },
     { path: "/app/chatbot", icon: Bot, label: "AI Assistant" },
     { path: "/app/reports", icon: FolderOpen, label: "Reports" },
     { path: "/app/profile", icon: User, label: "Profile" },
@@ -86,7 +88,7 @@ const Sidebar = () => {
       )}
 
       {/* Nav links */}
-      <nav className="grid flex-1 grid-cols-4 gap-1 overflow-x-auto px-2 py-2 md:block md:space-y-1 md:overflow-y-auto md:py-4">
+      <nav className="grid flex-1 grid-cols-5 gap-1 overflow-x-auto px-2 py-2 md:block md:space-y-1 md:overflow-y-auto md:py-4">
         {navItems.map((item) => {
           const Icon = item.icon;
           return (

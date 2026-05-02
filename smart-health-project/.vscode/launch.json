@@ -1,0 +1,14 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Python: Run smart-health main",
+      "type": "python",
+      "request": "launch",
+      "program": "${workspaceFolder}\\smart-health-project\\main.py",
+      "cwd": "${workspaceFolder}\\smart-health-project",
+      "console": "integratedTerminal",
+      "justMyCode": true
+    }
+  ]
+}

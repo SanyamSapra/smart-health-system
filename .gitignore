@@ -6,3 +6,10 @@ backend/.env
 frontend/.env
 dist/
 build/
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.uv-cache/
+*.log
+smart-health-project/disease_prediction_ai/dataset/Disease and symptoms dataset.csv

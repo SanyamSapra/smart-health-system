@@ -7,6 +7,7 @@ import ResetPassword from "./pages/public/ResetPassword";
 import VerifyEmail from "./pages/public/VerifyEmail";
 
 import Dashboard from "./pages/dashboard/Dashboard";
+import DiseasePrediction from "./pages/disease/DiseasePrediction";
 import CompleteProfile from "./pages/profile/CompleteProfile";
 import Chatbot from "./pages/chatbot/Chatbot";
 import Reports from "./pages/reports/Reports";
@@ -36,6 +37,7 @@ function App() {
           <Route path="/app" element={<Layout />}>
             <Route index element={<Navigate to="dashboard" />} />
             <Route path="dashboard" element={<Dashboard />} />
+            <Route path="disease-prediction" element={<DiseasePrediction />} />
             <Route path="chatbot" element={<Chatbot />} />
             <Route path="reports" element={<Reports />} />
             <Route path="profile" element={<ProfileView />} />

@@ -239,7 +239,7 @@ const Chatbot = () => {
           <div
             ref={scrollContainerRef}
             onScroll={handleScroll}
-            className="h-[55vh] space-y-4 overflow-y-auto p-4 md:h-[460px] md:p-5"
+            className="h-[55vh] space-y-4 overflow-y-auto p-4 md:h-100 md:p-5"
           >
             {/* Welcome banner — only when no conversation yet */}
             {!conversationStarted && (
