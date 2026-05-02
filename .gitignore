@@ -1,15 +1,169 @@
+# =========================================
+# DEPENDENCY & BUILD ARTIFACTS
+# =========================================
 node_modules/
-.env
 backend/node_modules/
 frontend/node_modules/
-backend/.env
-frontend/.env
 dist/
 build/
+coverage/
+*.tsbuildinfo
+
+# =========================================
+# ENVIRONMENT VARIABLES & SECRETS
+# =========================================
+.env
+.env.*
+!.env.example
+backend/.env
+frontend/.env
+smart-health-project/.env
+
+# =========================================
+# PYTHON & ML MODELS
+# =========================================
 __pycache__/
 *.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environments
 .venv/
 venv/
-.uv-cache/
+ENV/
+env/
+.virtualenv/
+.env.local
+
+# Poetry & Package Managers
+poetry.lock
+Pipfile.lock
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+*.ipynb
+
+# ML Model Files (Large binary files - rebuild locally)
+*.joblib
+*.pkl
+*.pickle
+*.h5
+*.model
+*.pt
+*.pth
+*.onnx
+
+# Data Files (Large datasets - keep in DVC or separate repo)
+*.csv
+!*example*.csv
+!*template*.csv
+*.xlsx
+*.xls
+*.sqlite
+*.db
+*.dbf
+
+# =========================================
+# IDE & EDITOR
+# =========================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+.AppleDouble
+.LSOverride
+*.sublime-project
+*.sublime-workspace
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
+
+# =========================================
+# OS & SYSTEM FILES
+# =========================================
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+desktop.ini
+Thumbs.db
+
+# =========================================
+# LOGS & TEMP FILES
+# =========================================
 *.log
-smart-health-project/disease_prediction_ai/dataset/Disease and symptoms dataset.csv
+logs/
+*.log.*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+*.tsbuildinfo
+.eslintcache
+.node_repl_history
+*.tgz
+.npm
+.eslintcache
+.node_repl_history
+
+# =========================================
+# TEMPORARY & CACHE
+# =========================================
+.cache/
+.tmp/
+tmp/
+temp/
+*.tmp
+.turbo
+.next
+out/
+
+# =========================================
+# TESTING
+# =========================================
+.nyc_output/
+coverage/
+*.lcov
+.test-results/
+
+# =========================================
+# DEPENDENCY LOCK FILES (Optional - uncomment if preferred)
+# =========================================
+# package-lock.json
+# yarn.lock
+# pnpm-lock.yaml
+
+# =========================================
+# SPECIFIC PROJECT PATTERNS
+# =========================================
+smart-health-project/disease_prediction_ai/dataset/Disease\ and\ symptoms\ dataset.csv
+smart-health-project/disease_prediction_ai/models/*.joblib
+smart-health-project/disease_prediction_ai/models/*.pkl
