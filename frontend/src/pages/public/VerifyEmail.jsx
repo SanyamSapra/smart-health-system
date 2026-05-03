@@ -1,14 +1,17 @@
 import { useState, useContext, useEffect } from "react";
 import { AppContext } from "../../context/AppContext";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import api from "../../services/api";
 import { toast } from "react-toastify";
 import { motion } from "framer-motion";
-import { MailCheck, ShieldCheck, RefreshCw } from "lucide-react";
+import { ArrowLeft, MailCheck, RefreshCw, ShieldCheck } from "lucide-react";
 
 const VerifyEmail = () => {
-  const { userData, getUserData } = useContext(AppContext);
+  const { userData, getUserData, logout } = useContext(AppContext);
   const navigate = useNavigate();
+  const location = useLocation();
+  const pendingEmail =
+    location.state?.email || sessionStorage.getItem("pendingSignupEmail") || "";
 
   const [otp, setOtp] = useState(["", "", "", "", "", ""]);
   const [loading, setLoading] = useState(false);
@@ -66,7 +69,11 @@ const VerifyEmail = () => {
 
       if (data.success) {
         toast.success("Email verified successfully");
-        await getUserData();
+        sessionStorage.removeItem("pendingSignupEmail");
+        const user = await getUserData();
+        navigate(user?.profileCompleted ? "/app/dashboard" : "/complete-profile", {
+          replace: true,
+        });
       } else {
         toast.error(data.message);
       }
@@ -97,6 +104,12 @@ const VerifyEmail = () => {
     }
   };
 
+  const handleWrongEmail = async () => {
+    await logout();
+    sessionStorage.removeItem("pendingSignupEmail");
+    navigate("/login", { replace: true, state: { mode: "signup" } });
+  };
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4 py-8">
       <motion.div
@@ -112,7 +125,7 @@ const VerifyEmail = () => {
           </div>
           <h2 className="text-2xl font-semibold text-center">Verify Your Email</h2>
           <p className="text-gray-500 text-sm mt-1 text-center">
-            Enter the 6-digit OTP sent to your email.
+            Enter the 6-digit OTP sent to {pendingEmail || userData?.email || "your email"}.
           </p>
         </div>
 
@@ -154,6 +167,15 @@ const VerifyEmail = () => {
               : resendLoading
               ? "Sending..."
               : "Resend OTP"}
+          </button>
+
+          <button
+            type="button"
+            onClick={handleWrongEmail}
+            className="mx-auto mt-4 flex items-center justify-center gap-1.5 text-sm font-medium text-gray-500 transition hover:text-gray-700"
+          >
+            <ArrowLeft size={13} />
+            Wrong email? Sign up again
           </button>
         </div>
       </motion.div>

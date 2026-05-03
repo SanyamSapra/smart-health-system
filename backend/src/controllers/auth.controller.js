@@ -15,6 +15,80 @@ const generateOtp = () => {
 const signToken = (userId) =>
   jwt.sign({ id: userId }, process.env.JWT_SECRET, { expiresIn: "7d" });
 
+const pendingCookieOptions = () => ({
+  httpOnly: true,
+  secure: process.env.NODE_ENV === "production",
+  sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+  maxAge: 10 * 60 * 1000,
+  path: "/",
+});
+
+const pendingSignupKey = () =>
+  crypto.createHash("sha256").update(process.env.JWT_SECRET).digest();
+
+const encryptPendingSignup = (payload) => {
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv("aes-256-gcm", pendingSignupKey(), iv);
+  const encrypted = Buffer.concat([
+    cipher.update(JSON.stringify(payload), "utf8"),
+    cipher.final(),
+  ]);
+  const tag = cipher.getAuthTag();
+
+  return [iv, tag, encrypted].map((part) => part.toString("base64url")).join(".");
+};
+
+const decryptPendingSignup = (value) => {
+  if (!value) return null;
+
+  try {
+    const [ivText, tagText, encryptedText] = value.split(".");
+    if (!ivText || !tagText || !encryptedText) return null;
+
+    const decipher = crypto.createDecipheriv(
+      "aes-256-gcm",
+      pendingSignupKey(),
+      Buffer.from(ivText, "base64url")
+    );
+    decipher.setAuthTag(Buffer.from(tagText, "base64url"));
+
+    const decrypted = Buffer.concat([
+      decipher.update(Buffer.from(encryptedText, "base64url")),
+      decipher.final(),
+    ]);
+
+    return JSON.parse(decrypted.toString("utf8"));
+  } catch {
+    return null;
+  }
+};
+
+const setPendingSignupCookie = (res, payload) => {
+  res.cookie("pendingSignup", encryptPendingSignup(payload), pendingCookieOptions());
+};
+
+const clearPendingSignupCookie = (res) => {
+  res.clearCookie("pendingSignup", {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+    path: "/",
+  });
+};
+
+const getLegacyUnverifiedUser = async (req) => {
+  const token = req.cookies?.token;
+  if (!token) return null;
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const user = await User.findById(decoded.id);
+    return user && !user.isAccountVerified ? user : null;
+  } catch {
+    return null;
+  }
+};
+
 // Attach auth cookie to response
 const setAuthCookie = (res, token) => {
   res.cookie("token", token, {
@@ -52,40 +126,31 @@ export const registerUser = async (req, res) => {
         .json({ success: false, message: "User already exists" });
     }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
     const { otp, hashed } = generateOtp();
-
-    const user = await User.create({
-      name,
+    const pendingSignup = {
+      name: name.trim(),
       email,
-      password: hashedPassword,
-      isAccountVerified: false,
+      password: await bcrypt.hash(password, 10),
       verifyOtp: hashed,
       verifyOtpExpireAt: Date.now() + 10 * 60 * 1000,
-    });
+    };
 
     await transporter.sendMail({
       from: `"Smart Health System" <${process.env.SENDER_EMAIL}>`,
-      to: user.email,
+      to: pendingSignup.email,
       subject: "Verify Your Email",
       html: `<h2>Email Verification</h2>
              <p>Your OTP is: <b>${otp}</b></p>
              <p>This OTP expires in 10 minutes.</p>`,
     });
 
-    const token = signToken(user._id);
-    setAuthCookie(res, token);
+    setPendingSignupCookie(res, pendingSignup);
 
     return res.status(201).json({
       success: true,
       message: "Registration successful. Please verify your email.",
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        isAccountVerified: user.isAccountVerified,
-        profileCompleted: user.profileCompleted,
-      },
+      pendingVerification: true,
+      email: pendingSignup.email,
     });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
@@ -158,32 +223,50 @@ export const logout = (req, res) => {
 // Send email verification OTP again
 export const sendVerifyOtp = async (req, res) => {
   try {
-    const user = await User.findById(req.userId);
+    const pendingSignup = decryptPendingSignup(req.cookies?.pendingSignup);
 
-    if (!user)
-      return res
-        .status(404)
-        .json({ success: false, message: "User not found" });
+    if (!pendingSignup?.email || !pendingSignup?.password || !pendingSignup?.name) {
+      const legacyUser = await getLegacyUnverifiedUser(req);
 
-    if (user.isAccountVerified)
-      return res
-        .status(400)
-        .json({ success: false, message: "Account already verified" });
+      if (!legacyUser) {
+        return res.status(400).json({
+          success: false,
+          message: "Signup session expired. Please sign up again.",
+        });
+      }
+
+      const { otp, hashed } = generateOtp();
+      legacyUser.verifyOtp = hashed;
+      legacyUser.verifyOtpExpireAt = Date.now() + 10 * 60 * 1000;
+      await legacyUser.save();
+
+      await transporter.sendMail({
+        from: `"Smart Health System" <${process.env.SENDER_EMAIL}>`,
+        to: legacyUser.email,
+        subject: "Verify Your Email",
+        html: `<h2>Email Verification</h2>
+               <p>Your OTP is: <b>${otp}</b></p>
+               <p>This OTP expires in 10 minutes.</p>`,
+      });
+
+      return res.json({ success: true, message: "OTP sent" });
+    }
 
     const { otp, hashed } = generateOtp();
 
-    user.verifyOtp = hashed;
-    user.verifyOtpExpireAt = Date.now() + 10 * 60 * 1000;
-    await user.save();
+    pendingSignup.verifyOtp = hashed;
+    pendingSignup.verifyOtpExpireAt = Date.now() + 10 * 60 * 1000;
 
     await transporter.sendMail({
       from: `"Smart Health System" <${process.env.SENDER_EMAIL}>`,
-      to: user.email,
+      to: pendingSignup.email,
       subject: "Verify Your Email",
       html: `<h2>Email Verification</h2>
              <p>Your OTP is: <b>${otp}</b></p>
              <p>This OTP expires in 10 minutes.</p>`,
     });
+
+    setPendingSignupCookie(res, pendingSignup);
 
     return res.json({ success: true, message: "OTP sent" });
   } catch (error) {
@@ -202,14 +285,50 @@ export const verifyEmail = async (req, res) => {
         .json({ success: false, message: "OTP is required" });
     }
 
-    const user = await User.findById(req.userId);
+    const pendingSignup = decryptPendingSignup(req.cookies?.pendingSignup);
 
-    if (!user)
-      return res
-        .status(404)
-        .json({ success: false, message: "User not found" });
+    if (!pendingSignup?.email || !pendingSignup?.password || !pendingSignup?.name) {
+      const legacyUser = await getLegacyUnverifiedUser(req);
 
-    if (user.verifyOtpExpireAt < Date.now())
+      if (!legacyUser) {
+        return res.status(400).json({
+          success: false,
+          message: "Signup session expired. Please sign up again.",
+        });
+      }
+
+      if (legacyUser.verifyOtpExpireAt < Date.now()) {
+        return res.status(400).json({ success: false, message: "OTP expired" });
+      }
+
+      const hashedInput = crypto
+        .createHash("sha256")
+        .update(String(otp))
+        .digest("hex");
+
+      if (legacyUser.verifyOtp !== hashedInput) {
+        return res.status(400).json({ success: false, message: "Invalid OTP" });
+      }
+
+      legacyUser.isAccountVerified = true;
+      legacyUser.verifyOtp = "";
+      legacyUser.verifyOtpExpireAt = null;
+      await legacyUser.save();
+
+      return res.json({
+        success: true,
+        message: "Email verified successfully",
+        user: {
+          id: legacyUser._id,
+          name: legacyUser.name,
+          email: legacyUser.email,
+          isAccountVerified: legacyUser.isAccountVerified,
+          profileCompleted: legacyUser.profileCompleted,
+        },
+      });
+    }
+
+    if (pendingSignup.verifyOtpExpireAt < Date.now())
       return res
         .status(400)
         .json({ success: false, message: "OTP expired" });
@@ -219,18 +338,44 @@ export const verifyEmail = async (req, res) => {
       .update(String(otp))
       .digest("hex");
 
-    if (user.verifyOtp !== hashedInput)
+    if (pendingSignup.verifyOtp !== hashedInput)
       return res
         .status(400)
         .json({ success: false, message: "Invalid OTP" });
 
-    user.isAccountVerified = true;
-    user.verifyOtp = "";
-    user.verifyOtpExpireAt = null;
+    const existingUser = await User.findOne({ email: pendingSignup.email });
+    if (existingUser) {
+      clearPendingSignupCookie(res);
+      return res.status(400).json({
+        success: false,
+        message: "User already exists. Please login.",
+      });
+    }
 
-    await user.save();
+    const user = await User.create({
+      name: pendingSignup.name,
+      email: pendingSignup.email,
+      password: pendingSignup.password,
+      isAccountVerified: true,
+      verifyOtp: "",
+      verifyOtpExpireAt: null,
+    });
 
-    return res.json({ success: true, message: "Email verified successfully" });
+    const token = signToken(user._id);
+    setAuthCookie(res, token);
+    clearPendingSignupCookie(res);
+
+    return res.json({
+      success: true,
+      message: "Email verified successfully",
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        isAccountVerified: user.isAccountVerified,
+        profileCompleted: user.profileCompleted,
+      },
+    });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }

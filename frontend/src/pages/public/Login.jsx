@@ -1,16 +1,17 @@
 import { useState, useContext, useEffect } from "react";
 import api from "../../services/api";
 import { AppContext } from "../../context/AppContext";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
 import { motion } from "framer-motion";
 import { Mail, Lock, User, LogIn, UserPlus, HeartPulse } from "lucide-react";
 
 const Login = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { isLoggedIn, setIsLoggedIn, getUserData } = useContext(AppContext);
 
-  const [mode, setMode] = useState("login");
+  const [mode, setMode] = useState(location.state?.mode === "signup" ? "signup" : "login");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -21,6 +22,13 @@ const Login = () => {
       navigate("/app/dashboard", { replace: true });
     }
   }, [isLoggedIn, navigate]);
+
+  useEffect(() => {
+    if (location.state?.mode === "signup") {
+      setMode("signup");
+      navigate(location.pathname, { replace: true });
+    }
+  }, [location.pathname, location.state?.mode, navigate]);
 
   const handleAuthSuccess = async () => {
     setIsLoggedIn(true);
@@ -48,7 +56,14 @@ const Login = () => {
         toast.success(
           mode === "signup" ? "Account created successfully!" : "Login successful!"
         );
-        await handleAuthSuccess();
+        if (mode === "signup") {
+          sessionStorage.setItem("pendingSignupEmail", data.email || email.trim());
+          navigate("/verify-email", {
+            state: { email: data.email || email.trim() },
+          });
+        } else {
+          await handleAuthSuccess();
+        }
       } else {
         toast.error(data.message);
       }
