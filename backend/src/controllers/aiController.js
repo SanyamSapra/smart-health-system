@@ -14,6 +14,14 @@ const INSIGHTS_CACHE_HOURS = 24;
 const CHAT_LIMIT_PER_DAY = 10;
 const DISEASE_API_URL = process.env.DISEASE_API_URL || "http://localhost:5050";
 
+const emptyConditionInsights = {
+  disease: "",
+  insights: [],
+  tips: [],
+  warning: "",
+  generatedAt: null,
+};
+
 function getTodayKey() {
   return new Date().toISOString().split("T")[0];
 }
@@ -48,7 +56,7 @@ function buildWarning(log) {
 
 async function getUserHealthContext(userId, days = 30) {
   const user = await User.findById(userId).select(
-    "gender dateOfBirth height bloodGroup activityLevel dietType smoking alcohol medicalConditions aiInsights aiChatUsage"
+    "gender dateOfBirth height bloodGroup activityLevel dietType smoking alcohol medicalConditions aiInsights conditionInsights activeCondition aiChatUsage"
   );
 
   const latestLog = await HealthLog.findOne({ user: userId }).sort({ loggedAt: -1 });
@@ -91,6 +99,66 @@ async function getUserHealthContext(userId, days = 30) {
     bmi,
     healthScore,
   };
+}
+
+function isFresh(generatedAt, hours = INSIGHTS_CACHE_HOURS) {
+  if (!generatedAt) return false;
+  const hoursSinceGeneration =
+    (Date.now() - new Date(generatedAt).getTime()) / (1000 * 60 * 60);
+  return hoursSinceGeneration < hours;
+}
+
+function isActiveCondition(condition) {
+  return Boolean(condition?.name && condition.status === "active");
+}
+
+function getPredictionConfidence(topDisease, predictions = []) {
+  const match = predictions.find((item) => item.disease === topDisease) || predictions[0];
+  const raw = match?.probability ?? match?.confidence;
+
+  if (!Number.isFinite(Number(raw))) return null;
+
+  const value = Number(raw);
+  return value > 1 ? Math.round(value) / 100 : value;
+}
+
+function normalizeDiseaseName(name) {
+  return typeof name === "string" ? name.trim() : "";
+}
+
+async function saveActiveCondition(user, predictionData) {
+  const topDisease = normalizeDiseaseName(
+    predictionData.topDisease || predictionData.predictions?.[0]?.disease
+  );
+
+  if (!topDisease) return null;
+
+  const current = user.activeCondition;
+  const sameActive =
+    current?.status === "active" &&
+    current?.name?.toLowerCase() === topDisease.toLowerCase();
+
+  const confidence = getPredictionConfidence(topDisease, predictionData.predictions || []);
+  if (sameActive) {
+    if (confidence != null && current.confidence !== confidence) {
+      user.activeCondition.confidence = confidence;
+      await user.save();
+    }
+    return user.activeCondition;
+  }
+
+  user.activeCondition = {
+    name: topDisease,
+    confidence,
+    source: "prediction-model",
+    status: "active",
+    predictedAt: new Date(),
+    recoveredAt: null,
+  };
+  user.conditionInsights = emptyConditionInsights;
+  await user.save();
+
+  return user.activeCondition;
 }
 
 function buildDiseasePredictionContext(context, userInput = {}) {
@@ -264,6 +332,28 @@ Return JSON only:
 {"insights":["","",""],"tips":["","",""],"warning":""}`;
 }
 
+function getConditionInsightsPrompt({ conditionName, user }) {
+  return `Return exact JSON for wellness guidance.
+
+Predicted active condition: ${conditionName}
+Diet type: ${user.dietType || "Unknown"}
+Activity level: ${user.activityLevel || "Unknown"}
+
+Rules:
+- Say possible condition or predicted risk, never diagnosis
+- 1 insight about health context
+- 2 diet tips
+- 1 fitness tip
+- 1 precaution/warning
+- Wellness advice only, no medicines, no dosage
+- Do not repeat trend detection statements
+- Do not mention metrics unless necessary
+- Keep every line concise
+
+Return JSON only:
+{"insights":[""],"tips":["","",""],"warning":""}`;
+}
+
 function parseInsightsText(text, fallbackWarning = "") {
   const jsonMatch = text.match(/\{[\s\S]*\}/);
   if (!jsonMatch) {
@@ -360,23 +450,119 @@ export const getDashboardInsights = async (req, res) => {
       return res.status(404).json({ success: false, message: "User not found" });
     }
 
-    const generatedAt = context.user.aiInsights?.generatedAt;
-    if (generatedAt) {
-      const hoursSinceGeneration =
-        (Date.now() - new Date(generatedAt).getTime()) / (1000 * 60 * 60);
+    const activeCondition = isActiveCondition(context.user.activeCondition)
+      ? context.user.activeCondition
+      : null;
+    const manualRefresh = req.query.refresh === "true";
 
-      if (hoursSinceGeneration < INSIGHTS_CACHE_HOURS) {
+    if (activeCondition) {
+      const cachedCondition = context.user.conditionInsights;
+      if (
+        !manualRefresh &&
+        cachedCondition?.disease?.toLowerCase() === activeCondition.name.toLowerCase() &&
+        isFresh(cachedCondition.generatedAt)
+      ) {
         return res.json({
           success: true,
           cached: true,
           data: {
-            insights: context.user.aiInsights.insights || [],
-            tips: context.user.aiInsights.tips || [],
-            warning: context.user.aiInsights.warning || "",
-            generatedAt,
+            insights: cachedCondition.insights || [],
+            tips: cachedCondition.tips || [],
+            warning: cachedCondition.warning || "",
+            generatedAt: cachedCondition.generatedAt,
+            activeCondition,
           },
         });
       }
+
+      const fallbackConditionData = {
+        insights: [
+          `Your dashboard is using ${activeCondition.name} as a possible condition context.`,
+        ],
+        tips: [
+          "Choose balanced meals with whole foods and steady hydration.",
+          "Keep portions moderate and avoid highly processed foods when possible.",
+          "Stay lightly active unless symptoms feel severe.",
+        ],
+        warning: "This is not a diagnosis. Consult a doctor if symptoms persist or worsen.",
+      };
+
+      if (!hasGeminiKey || !ai) {
+        context.user.conditionInsights = {
+          disease: activeCondition.name,
+          ...fallbackConditionData,
+          generatedAt: new Date(),
+        };
+        await context.user.save();
+
+        return res.json({
+          success: true,
+          cached: false,
+          data: {
+            disease: context.user.conditionInsights.disease,
+            insights: context.user.conditionInsights.insights || [],
+            tips: context.user.conditionInsights.tips || [],
+            warning: context.user.conditionInsights.warning || "",
+            generatedAt: context.user.conditionInsights.generatedAt,
+            activeCondition,
+          },
+        });
+      }
+
+      const result = await ai.models.generateContent({
+        model: GEMINI_MODEL,
+        contents: getConditionInsightsPrompt({
+          conditionName: activeCondition.name,
+          user: context.user,
+        }),
+      });
+
+      const parsed = parseInsightsText(
+        result.text?.trim() || "",
+        fallbackConditionData.warning
+      );
+      const savedInsights = parsed || fallbackConditionData;
+
+      context.user.conditionInsights = {
+        disease: activeCondition.name,
+        insights: savedInsights.insights.length
+          ? savedInsights.insights.slice(0, 1)
+          : fallbackConditionData.insights,
+        tips: savedInsights.tips.length
+          ? savedInsights.tips.slice(0, 3)
+          : fallbackConditionData.tips,
+        warning: savedInsights.warning || fallbackConditionData.warning,
+        generatedAt: new Date(),
+      };
+      await context.user.save();
+
+      return res.json({
+        success: true,
+        cached: false,
+        data: {
+          disease: context.user.conditionInsights.disease,
+          insights: context.user.conditionInsights.insights || [],
+          tips: context.user.conditionInsights.tips || [],
+          warning: context.user.conditionInsights.warning || "",
+          generatedAt: context.user.conditionInsights.generatedAt,
+          activeCondition,
+        },
+      });
+    }
+
+    const generatedAt = context.user.aiInsights?.generatedAt;
+    if (!manualRefresh && isFresh(generatedAt)) {
+      return res.json({
+        success: true,
+        cached: true,
+        data: {
+          insights: context.user.aiInsights.insights || [],
+          tips: context.user.aiInsights.tips || [],
+          warning: context.user.aiInsights.warning || "",
+          generatedAt,
+          activeCondition: null,
+        },
+      });
     }
 
     const fallbackData = {
@@ -409,7 +595,13 @@ export const getDashboardInsights = async (req, res) => {
       return res.json({
         success: true,
         cached: false,
-        data: context.user.aiInsights,
+        data: {
+          insights: context.user.aiInsights.insights || [],
+          tips: context.user.aiInsights.tips || [],
+          warning: context.user.aiInsights.warning || "",
+          generatedAt: context.user.aiInsights.generatedAt,
+          activeCondition: null,
+        },
       });
     }
 
@@ -442,7 +634,13 @@ export const getDashboardInsights = async (req, res) => {
     return res.json({
       success: true,
       cached: false,
-      data: context.user.aiInsights,
+      data: {
+        insights: context.user.aiInsights.insights || [],
+        tips: context.user.aiInsights.tips || [],
+        warning: context.user.aiInsights.warning || "",
+        generatedAt: context.user.aiInsights.generatedAt,
+        activeCondition: null,
+      },
     });
   } catch (error) {
     console.error("AI insights error:", error.message);
@@ -494,6 +692,8 @@ export const predictDisease = async (req, res) => {
       });
     }
 
+    const activeCondition = await saveActiveCondition(context.user, data);
+
     return res.json({
       success: true,
       data: {
@@ -501,6 +701,7 @@ export const predictDisease = async (req, res) => {
         topDisease: data.topDisease,
         predictionMeta: data.predictionMeta,
         patientContext: data.patientContext || clinicalContext,
+        activeCondition,
       },
     });
   } catch (error) {

@@ -104,13 +104,29 @@ function validateHealthPayload(payload, { partial = false } = {}) {
   return { updates };
 }
 
+function clearInsightCaches(user) {
+  user.aiInsights = {
+    insights: [],
+    tips: [],
+    warning: "",
+    generatedAt: null,
+  };
+  user.conditionInsights = {
+    disease: "",
+    insights: [],
+    tips: [],
+    warning: "",
+    generatedAt: null,
+  };
+}
+
 // Get the latest health metrics for the dashboard
 export const getLatestHealthSummary = async (req, res) => {
   try {
     const userId = req.userId;
 
     const user = await User.findById(userId).select(
-      "height dateOfBirth email lastReminderSentAt"
+      "height dateOfBirth email lastReminderSentAt activeCondition"
     );
     if (!user) {
       return res
@@ -147,6 +163,10 @@ export const getLatestHealthSummary = async (req, res) => {
           trends: [],
           loggedToday: false,
           lastUpdated: null,
+          activeCondition:
+            user.activeCondition?.status === "active" && user.activeCondition?.name
+              ? user.activeCondition
+              : null,
         },
       });
     }
@@ -208,6 +228,10 @@ export const getLatestHealthSummary = async (req, res) => {
         trends,
         loggedToday,
         lastUpdated: latestLog.loggedAt,
+        activeCondition:
+          user.activeCondition?.status === "active" && user.activeCondition?.name
+            ? user.activeCondition
+            : null,
       },
     });
   } catch (error) {
@@ -231,6 +255,24 @@ export const addHealthLog = async (req, res) => {
     const newLog = await HealthLog.create({
       user: userId,
       ...updates,
+    });
+
+    await User.findByIdAndUpdate(userId, {
+      $set: {
+        aiInsights: {
+          insights: [],
+          tips: [],
+          warning: "",
+          generatedAt: null,
+        },
+        conditionInsights: {
+          disease: "",
+          insights: [],
+          tips: [],
+          warning: "",
+          generatedAt: null,
+        },
+      },
     });
 
     return res.status(201).json({
@@ -315,6 +357,24 @@ export const updateHealthLog = async (req, res) => {
         .json({ success: false, message: "Health log not found" });
     }
 
+    await User.findByIdAndUpdate(req.userId, {
+      $set: {
+        aiInsights: {
+          insights: [],
+          tips: [],
+          warning: "",
+          generatedAt: null,
+        },
+        conditionInsights: {
+          disease: "",
+          insights: [],
+          tips: [],
+          warning: "",
+          generatedAt: null,
+        },
+      },
+    });
+
     return res.json({ success: true, data: log });
   } catch (error) {
     return sendValidationError(res, error);
@@ -338,7 +398,59 @@ export const deleteHealthLog = async (req, res) => {
         .json({ success: false, message: "Health log not found" });
     }
 
+    await User.findByIdAndUpdate(req.userId, {
+      $set: {
+        aiInsights: {
+          insights: [],
+          tips: [],
+          warning: "",
+          generatedAt: null,
+        },
+        conditionInsights: {
+          disease: "",
+          insights: [],
+          tips: [],
+          warning: "",
+          generatedAt: null,
+        },
+      },
+    });
+
     return res.json({ success: true, message: "Health log deleted" });
+  } catch (error) {
+    return sendValidationError(res, error);
+  }
+};
+
+export const markRecovered = async (req, res) => {
+  try {
+    const user = await User.findById(req.userId).select(
+      "activeCondition aiInsights conditionInsights"
+    );
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    if (!user.activeCondition?.name || user.activeCondition.status !== "active") {
+      return res.status(400).json({
+        success: false,
+        message: "No active condition to mark as recovered",
+      });
+    }
+
+    user.activeCondition.status = "recovered";
+    user.activeCondition.recoveredAt = new Date();
+    clearInsightCaches(user);
+    await user.save();
+
+    return res.json({
+      success: true,
+      message: "Condition marked as recovered",
+      data: {
+        activeCondition: null,
+      },
+    });
   } catch (error) {
     return sendValidationError(res, error);
   }

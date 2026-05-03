@@ -16,6 +16,7 @@ import {
 import {
   AlertTriangle, Bot, Weight, Stethoscope,
   Droplets, BarChart2, TrendingUp, Plus, Upload, X, Target, Clock,
+  CheckCircle2,
 } from "lucide-react";
 
 const formatChartDate = (value, view) => {
@@ -50,6 +51,17 @@ const sugarBarColor = (v) => {
   if (v >= 126) return "#f97316";
   if (v >= 100) return "#facc15";
   return "#2563eb";
+};
+
+const formatConditionDate = (value) => {
+  if (!value) return "Recently";
+
+  const date = new Date(value);
+  const today = new Date();
+  const isToday = date.toDateString() === today.toDateString();
+
+  if (isToday) return "Today";
+  return date.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
 };
 
 const CustomTooltip = ({ active, payload, label, unit, mode }) => {
@@ -182,6 +194,7 @@ const Dashboard = () => {
   const [submitLoading, setSubmitLoading] = useState(false);
   const [insights, setInsights] = useState(null);
   const [insightsLoading, setInsightsLoading] = useState(true);
+  const [recovering, setRecovering] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(null);
 
   const [weightTimeframe, setWeightTimeframe] = useState("daily");
@@ -252,6 +265,19 @@ const Dashboard = () => {
     }
   };
 
+  const markRecovered = async () => {
+    setRecovering(true);
+    try {
+      await api.post("/health/mark-recovered");
+      toast.success("Marked as recovered");
+      await Promise.all([fetchSummary(), fetchInsights()]);
+    } catch (err) {
+      toast.error(err.response?.data?.message || "Failed to update condition");
+    } finally {
+      setRecovering(false);
+    }
+  };
+
   const addLog = async () => {
     const payload = {
       weight: form.weight ? Number(form.weight) : undefined,
@@ -272,6 +298,7 @@ const Dashboard = () => {
       setShowForm(false);
       fetchSummary();
       fetchHistory();
+      fetchInsights();
     } catch (err) {
       toast.error(err.response?.data?.message || "Failed to save log");
     } finally {
@@ -285,6 +312,7 @@ const Dashboard = () => {
 
   const showBPAlert = summary?.systolicBP >= 140;
   const showBSAlert = summary?.sugarLevel >= 200;
+  const activeCondition = summary?.activeCondition || insights?.activeCondition;
 
   // Build Today's Focus points (max 2)
   const focusPoints = [];
@@ -594,6 +622,52 @@ const Dashboard = () => {
             </div>
           )}
         </motion.div>
+
+        {/* Active health condition */}
+        <AnimatePresence>
+          {activeCondition?.name && activeCondition?.status === "active" ? (
+            <motion.div
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.35 }}
+              className="rounded-2xl border border-blue-100 bg-white p-5 shadow-sm"
+            >
+              <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <Stethoscope size={17} className="text-blue-600" />
+                    <h3 className="text-sm font-bold text-gray-700">Active Health Condition</h3>
+                    <span className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
+                      Active
+                    </span>
+                  </div>
+                  <p className="mt-3 text-lg font-bold text-gray-900">
+                    Possible Condition: {activeCondition.name}
+                  </p>
+                  <p className="mt-1 text-sm text-gray-500">
+                    Detected: {formatConditionDate(activeCondition.predictedAt)}
+                    {activeCondition.confidence != null
+                      ? ` • Predicted risk ${Math.round(activeCondition.confidence * 100)}%`
+                      : ""}
+                  </p>
+                  <p className="mt-2 text-xs text-gray-400">
+                    This is screening context only. Consult a doctor if symptoms persist.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={markRecovered}
+                  disabled={recovering}
+                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-green-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-green-700 disabled:opacity-50"
+                >
+                  <CheckCircle2 size={16} />
+                  {recovering ? "Updating..." : "Mark as Recovered"}
+                </button>
+              </div>
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
 
         {/* AI Insights + Trend Detection */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">

@@ -122,6 +122,60 @@ const userSchema = new mongoose.Schema(
       },
     },
 
+    activeCondition: {
+      name: {
+        type: String,
+        trim: true,
+        default: "",
+      },
+      confidence: {
+        type: Number,
+        default: null,
+      },
+      source: {
+        type: String,
+        trim: true,
+        default: "",
+      },
+      status: {
+        type: String,
+        enum: ["active", "recovered"],
+        default: "active",
+      },
+      predictedAt: {
+        type: Date,
+        default: null,
+      },
+      recoveredAt: {
+        type: Date,
+        default: null,
+      },
+    },
+
+    conditionInsights: {
+      disease: {
+        type: String,
+        trim: true,
+        default: "",
+      },
+      insights: {
+        type: [String],
+        default: [],
+      },
+      tips: {
+        type: [String],
+        default: [],
+      },
+      warning: {
+        type: String,
+        default: "",
+      },
+      generatedAt: {
+        type: Date,
+        default: null,
+      },
+    },
+
     aiChatUsage: {
       date: {
         type: String,
