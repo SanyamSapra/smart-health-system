@@ -26,10 +26,14 @@ function getTodayKey() {
   return new Date().toISOString().split("T")[0];
 }
 
-function sendFallbackChat(res) {
+function sendFallbackChat(res, activeCondition = null) {
+  const conditionName = activeCondition?.name?.trim();
+  const reply = conditionName
+    ? `Your latest model result shows ${conditionName} as a possible condition, not a confirmed diagnosis.\nPlease track your symptoms, rest, stay hydrated, and avoid self-medicating.\nIf symptoms persist, worsen, or feel severe, consult a doctor.`
+    : "Please stay hydrated, eat balanced meals, and continue tracking your health regularly.\nIf you feel unwell or your readings stay abnormal, please speak with a doctor.";
+
   const data = {
-    reply:
-      "Please stay hydrated, eat balanced meals, and continue tracking your health regularly.\nIf you feel unwell or your readings stay abnormal, please speak with a doctor.",
+    reply,
     fallback: true,
   };
 
@@ -221,6 +225,22 @@ function getAbnormalSummary({ latestLog, bmi }) {
   return items.length ? items.join("; ") : "No clearly abnormal latest values";
 }
 
+function getActiveConditionSummary(activeCondition) {
+  if (!activeCondition) {
+    return "No active predicted disease. Answer normally using the user's profile and health data only when relevant.";
+  }
+
+  const confidenceText =
+    activeCondition.confidence != null
+      ? ` with about ${Math.round(activeCondition.confidence * 100)}% model confidence`
+      : "";
+  const predictedAtText = activeCondition.predictedAt
+    ? ` on ${new Date(activeCondition.predictedAt).toLocaleDateString("en-IN")}`
+    : "";
+
+  return `Active predicted disease: ${activeCondition.name}${confidenceText}${predictedAtText}. Treat this as possible condition context, not a confirmed diagnosis.`;
+}
+
 function getChatPrompt({
   user,
   latestLog,
@@ -229,6 +249,7 @@ function getChatPrompt({
   trends,
   age,
   bmi,
+  activeCondition,
   message,
 }) {
   const recentSummary = logs
@@ -271,11 +292,17 @@ ${trends.length ? trends.join("; ") : "No clear trend available"}
 Priority context:
 ${getAbnormalSummary({ latestLog, bmi })}
 
+Disease prediction context:
+${getActiveConditionSummary(activeCondition)}
+
 User question:
 ${message}
 
 Rules:
 - Reply in simple language in 3–5 short lines
+- If there is an active predicted disease, answer the user's question with that possible condition in mind when it is relevant
+- If there is no active predicted disease, answer normally and do not invent a disease
+- Say "possible" or "predicted" condition, never confirmed disease
 - Prioritize abnormal values only when relevant to the user's question
 - Use trends when they add useful context
 - Do not repeat the same warning unless it is important for this question
@@ -400,12 +427,15 @@ export const chatWithAssistant = async (req, res) => {
     user.aiChatUsage.count += 1;
     await user.save();
 
-    if (!hasGeminiKey || !ai) {
-      return sendFallbackChat(res);
-    }
-
     const context = await getUserHealthContext(req.userId, 7);
     const trends = getTrendMessages(context.logs);
+    const activeCondition = isActiveCondition(context.user.activeCondition)
+      ? context.user.activeCondition
+      : null;
+
+    if (!hasGeminiKey || !ai) {
+      return sendFallbackChat(res, activeCondition);
+    }
     const result = await ai.models.generateContent({
       model: GEMINI_MODEL,
       contents: getChatPrompt({
@@ -416,13 +446,14 @@ export const chatWithAssistant = async (req, res) => {
         trends,
         age: context.age,
         bmi: context.bmi,
+        activeCondition,
         message,
       }),
     });
 
     const reply = result.text?.trim();
     if (!reply) {
-      return sendFallbackChat(res);
+      return sendFallbackChat(res, activeCondition);
     }
 
     const data = {
