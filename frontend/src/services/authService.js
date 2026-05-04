@@ -9,7 +9,7 @@ export const loginUser = async (data) => {
 };
 
 export const verifyEmail = async (data) => {
-  return await api.post("/auth/verify-email", data);
+  return await api.post("/auth/verify-account", data);
 };
 
 export const resetPassword = async (data) => {

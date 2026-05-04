@@ -65,7 +65,10 @@ const VerifyEmail = () => {
 
     setLoading(true);
     try {
-      const { data } = await api.post("/auth/verify-account", { otp: otpString });
+      const { data } = await api.post("/auth/verify-account", {
+        otp: otpString,
+        email: pendingEmail || userData?.email,
+      });
 
       if (data.success) {
         toast.success("Email verified successfully");
@@ -87,7 +90,9 @@ const VerifyEmail = () => {
   const handleResend = async () => {
     setResendLoading(true);
     try {
-      const { data } = await api.post("/auth/send-verify-otp", {});
+      const { data } = await api.post("/auth/send-verify-otp", {
+        email: pendingEmail || userData?.email,
+      });
 
       if (data.success) {
         toast.success("OTP sent again");

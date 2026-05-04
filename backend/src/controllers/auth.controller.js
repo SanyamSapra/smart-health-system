@@ -4,6 +4,8 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import transporter from "../config/nodemailer.js";
 
+const isProduction = process.env.NODE_ENV === "production";
+
 // Generate OTP and store only its hash in DB
 const generateOtp = () => {
   const otp = String(crypto.randomInt(100000, 999999));
@@ -22,32 +24,28 @@ const sendVerificationEmail = async (email, otp) => {
   });
 };
 
+const formatUser = (user) => ({
+  id: user._id,
+  name: user.name,
+  email: user.email,
+  isAccountVerified: user.isAccountVerified,
+  profileCompleted: user.profileCompleted,
+});
+
 // Create JWT token for authentication
 const signToken = (userId) =>
   jwt.sign({ id: userId }, process.env.JWT_SECRET, { expiresIn: "7d" });
 
-const pendingCookieOptions = () => ({
+const cookieOptions = (maxAge) => ({
   httpOnly: true,
-  secure: process.env.NODE_ENV === "production",
-  sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-  maxAge: 10 * 60 * 1000,
+  secure: isProduction,
+  sameSite: isProduction ? "none" : "lax",
   path: "/",
+  ...(maxAge ? { maxAge } : {}),
 });
 
 const pendingSignupKey = () =>
   crypto.createHash("sha256").update(process.env.JWT_SECRET).digest();
-
-const encryptPendingSignup = (payload) => {
-  const iv = crypto.randomBytes(12);
-  const cipher = crypto.createCipheriv("aes-256-gcm", pendingSignupKey(), iv);
-  const encrypted = Buffer.concat([
-    cipher.update(JSON.stringify(payload), "utf8"),
-    cipher.final(),
-  ]);
-  const tag = cipher.getAuthTag();
-
-  return [iv, tag, encrypted].map((part) => part.toString("base64url")).join(".");
-};
 
 const decryptPendingSignup = (value) => {
   if (!value) return null;
@@ -74,40 +72,46 @@ const decryptPendingSignup = (value) => {
   }
 };
 
-const setPendingSignupCookie = (res, payload) => {
-  res.cookie("pendingSignup", encryptPendingSignup(payload), pendingCookieOptions());
-};
-
 const clearPendingSignupCookie = (res) => {
-  res.clearCookie("pendingSignup", {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-    path: "/",
-  });
+  res.clearCookie("pendingSignup", cookieOptions());
 };
 
-const getLegacyUnverifiedUser = async (req) => {
+const getUserFromToken = async (req) => {
   const token = req.cookies?.token;
   if (!token) return null;
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const user = await User.findById(decoded.id);
-    return user && !user.isAccountVerified ? user : null;
+    return await User.findById(decoded.id);
   } catch {
     return null;
   }
 };
 
+const findUnverifiedUserForOtp = async (req) => {
+  const email = req.body?.email?.toLowerCase()?.trim();
+
+  if (email) {
+    const user = await User.findOne({ email });
+    if (user && !user.isAccountVerified) return user;
+  }
+
+  const tokenUser = await getUserFromToken(req);
+  if (tokenUser && !tokenUser.isAccountVerified) return tokenUser;
+
+  // Backward compatibility for users who started signup before this DB-first flow.
+  const pendingSignup = decryptPendingSignup(req.cookies?.pendingSignup);
+  if (pendingSignup?.email) {
+    const user = await User.findOne({ email: pendingSignup.email });
+    if (user && !user.isAccountVerified) return user;
+  }
+
+  return null;
+};
+
 // Attach auth cookie to response
 const setAuthCookie = (res, token) => {
-  res.cookie("token", token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-    maxAge: 7 * 24 * 60 * 60 * 1000,
-  });
+  res.cookie("token", token, cookieOptions(7 * 24 * 60 * 60 * 1000));
 };
 
 // Register new user
@@ -130,31 +134,47 @@ export const registerUser = async (req, res) => {
       });
     }
 
-    const existingUser = await User.findOne({ email });
-    if (existingUser) {
+    let user = await User.findOne({ email });
+    if (user?.isAccountVerified) {
       return res
         .status(400)
         .json({ success: false, message: "User already exists" });
     }
 
     const { otp, hashed } = generateOtp();
-    const pendingSignup = {
-      name: name.trim(),
-      email,
-      password: await bcrypt.hash(password, 10),
-      verifyOtp: hashed,
-      verifyOtpExpireAt: Date.now() + 10 * 60 * 1000,
-    };
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const verifyOtpExpireAt = Date.now() + 10 * 60 * 1000;
 
-    await sendVerificationEmail(pendingSignup.email, otp);
+    if (user) {
+      user.name = name.trim();
+      user.password = hashedPassword;
+      user.verifyOtp = hashed;
+      user.verifyOtpExpireAt = verifyOtpExpireAt;
+      user.isAccountVerified = false;
+      await user.save();
+    } else {
+      user = await User.create({
+        name: name.trim(),
+        email,
+        password: hashedPassword,
+        isAccountVerified: false,
+        verifyOtp: hashed,
+        verifyOtpExpireAt,
+      });
+    }
 
-    setPendingSignupCookie(res, pendingSignup);
+    await sendVerificationEmail(user.email, otp);
+
+    const token = signToken(user._id);
+    setAuthCookie(res, token);
+    clearPendingSignupCookie(res);
 
     return res.status(201).json({
       success: true,
       message: "Registration successful. Please verify your email.",
       pendingVerification: true,
-      email: pendingSignup.email,
+      email: user.email,
+      user: formatUser(user),
     });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
@@ -189,8 +209,6 @@ export const login = async (req, res) => {
         .json({ success: false, message: "Invalid credentials" });
     }
 
-    const token = signToken(user._id);
-
     if (!user.isAccountVerified) {
       const { otp, hashed } = generateOtp();
       user.verifyOtp = hashed;
@@ -199,7 +217,9 @@ export const login = async (req, res) => {
       await sendVerificationEmail(user.email, otp);
     }
 
+    const token = signToken(user._id);
     setAuthCookie(res, token);
+    clearPendingSignupCookie(res);
 
     return res.status(200).json({
       success: true,
@@ -207,13 +227,7 @@ export const login = async (req, res) => {
         ? "Login successful"
         : "Login successful. Verification OTP sent.",
       pendingVerification: !user.isAccountVerified,
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        isAccountVerified: user.isAccountVerified,
-        profileCompleted: user.profileCompleted,
-      },
+      user: formatUser(user),
     });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
@@ -223,12 +237,8 @@ export const login = async (req, res) => {
 // Logout user
 export const logout = (req, res) => {
   try {
-    res.clearCookie("token", {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-      path: "/",
-    });
+    res.clearCookie("token", cookieOptions());
+    clearPendingSignupCookie(res);
 
     return res.json({ success: true, message: "Logged out successfully" });
   } catch (error) {
@@ -239,38 +249,28 @@ export const logout = (req, res) => {
 // Send email verification OTP again
 export const sendVerifyOtp = async (req, res) => {
   try {
-    const pendingSignup = decryptPendingSignup(req.cookies?.pendingSignup);
+    const user = await findUnverifiedUserForOtp(req);
 
-    if (!pendingSignup?.email || !pendingSignup?.password || !pendingSignup?.name) {
-      const legacyUser = await getLegacyUnverifiedUser(req);
-
-      if (!legacyUser) {
-        return res.status(400).json({
-          success: false,
-          message: "Signup session expired. Please sign up again.",
-        });
-      }
-
-      const { otp, hashed } = generateOtp();
-      legacyUser.verifyOtp = hashed;
-      legacyUser.verifyOtpExpireAt = Date.now() + 10 * 60 * 1000;
-      await legacyUser.save();
-
-      await sendVerificationEmail(legacyUser.email, otp);
-
-      return res.json({ success: true, message: "OTP sent" });
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        message: "No pending verification found. Please sign up or log in again.",
+      });
     }
 
     const { otp, hashed } = generateOtp();
 
-    pendingSignup.verifyOtp = hashed;
-    pendingSignup.verifyOtpExpireAt = Date.now() + 10 * 60 * 1000;
+    user.verifyOtp = hashed;
+    user.verifyOtpExpireAt = Date.now() + 10 * 60 * 1000;
+    await user.save();
 
-    await sendVerificationEmail(pendingSignup.email, otp);
+    await sendVerificationEmail(user.email, otp);
 
-    setPendingSignupCookie(res, pendingSignup);
+    const token = signToken(user._id);
+    setAuthCookie(res, token);
+    clearPendingSignupCookie(res);
 
-    return res.json({ success: true, message: "OTP sent" });
+    return res.json({ success: true, message: "OTP sent", email: user.email });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -287,81 +287,32 @@ export const verifyEmail = async (req, res) => {
         .json({ success: false, message: "OTP is required" });
     }
 
-    const pendingSignup = decryptPendingSignup(req.cookies?.pendingSignup);
+    const user = await findUnverifiedUserForOtp(req);
 
-    if (!pendingSignup?.email || !pendingSignup?.password || !pendingSignup?.name) {
-      const legacyUser = await getLegacyUnverifiedUser(req);
-
-      if (!legacyUser) {
-        return res.status(400).json({
-          success: false,
-          message: "Signup session expired. Please sign up again.",
-        });
-      }
-
-      if (legacyUser.verifyOtpExpireAt < Date.now()) {
-        return res.status(400).json({ success: false, message: "OTP expired" });
-      }
-
-      const hashedInput = crypto
-        .createHash("sha256")
-        .update(String(otp))
-        .digest("hex");
-
-      if (legacyUser.verifyOtp !== hashedInput) {
-        return res.status(400).json({ success: false, message: "Invalid OTP" });
-      }
-
-      legacyUser.isAccountVerified = true;
-      legacyUser.verifyOtp = "";
-      legacyUser.verifyOtpExpireAt = null;
-      await legacyUser.save();
-
-      return res.json({
-        success: true,
-        message: "Email verified successfully",
-        user: {
-          id: legacyUser._id,
-          name: legacyUser.name,
-          email: legacyUser.email,
-          isAccountVerified: legacyUser.isAccountVerified,
-          profileCompleted: legacyUser.profileCompleted,
-        },
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        message: "No pending verification found. Please sign up or log in again.",
       });
     }
 
-    if (pendingSignup.verifyOtpExpireAt < Date.now())
-      return res
-        .status(400)
-        .json({ success: false, message: "OTP expired" });
+    if (!user.verifyOtp || !user.verifyOtpExpireAt || user.verifyOtpExpireAt < Date.now()) {
+      return res.status(400).json({ success: false, message: "OTP expired" });
+    }
 
     const hashedInput = crypto
       .createHash("sha256")
       .update(String(otp))
       .digest("hex");
 
-    if (pendingSignup.verifyOtp !== hashedInput)
-      return res
-        .status(400)
-        .json({ success: false, message: "Invalid OTP" });
-
-    const existingUser = await User.findOne({ email: pendingSignup.email });
-    if (existingUser) {
-      clearPendingSignupCookie(res);
-      return res.status(400).json({
-        success: false,
-        message: "User already exists. Please login.",
-      });
+    if (user.verifyOtp !== hashedInput) {
+      return res.status(400).json({ success: false, message: "Invalid OTP" });
     }
 
-    const user = await User.create({
-      name: pendingSignup.name,
-      email: pendingSignup.email,
-      password: pendingSignup.password,
-      isAccountVerified: true,
-      verifyOtp: "",
-      verifyOtpExpireAt: null,
-    });
+    user.isAccountVerified = true;
+    user.verifyOtp = "";
+    user.verifyOtpExpireAt = null;
+    await user.save();
 
     const token = signToken(user._id);
     setAuthCookie(res, token);
@@ -370,13 +321,7 @@ export const verifyEmail = async (req, res) => {
     return res.json({
       success: true,
       message: "Email verified successfully",
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        isAccountVerified: user.isAccountVerified,
-        profileCompleted: user.profileCompleted,
-      },
+      user: formatUser(user),
     });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
@@ -422,7 +367,7 @@ export const sendResetOtp = async (req, res) => {
   }
 };
 
-// Verify reset OTP 
+// Verify reset OTP
 export const verifyResetOtp = async (req, res) => {
   try {
     const { email, otp } = req.body;

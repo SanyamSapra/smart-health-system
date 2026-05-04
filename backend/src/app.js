@@ -19,13 +19,23 @@ const parseOrigins = (value = "") =>
 
 const allowedOrigins = [
   "http://localhost:5173",
+  "http://localhost:3000",
   ...parseOrigins(process.env.CLIENT_URL),
+  ...parseOrigins(process.env.FRONTEND_URL),
+  ...parseOrigins(process.env.CORS_ORIGIN),
 ];
 
 // Basic middleware
 app.use(cors({
-  origin: allowedOrigins,
-  credentials: true
+  origin(origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+
+    return callback(new Error(`CORS blocked for origin: ${origin}`));
+  },
+  credentials: true,
+  optionsSuccessStatus: 204,
 }));
 
 app.use(express.json());
