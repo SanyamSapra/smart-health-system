@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { toast } from "react-toastify";
 import api from "../../services/api";
+import { BACKEND_URL } from "../../services/config";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -58,7 +59,7 @@ function formatReportDate(date) {
 
 function getReportViewUrl(report) {
   if (report.fileType === "pdf") {
-    return `${import.meta.env.VITE_BACKEND_URL}/api/reports/${report._id}/file`;
+    return `${BACKEND_URL}/api/reports/${report._id}/file`;
   }
   return report.fileUrl;
 }

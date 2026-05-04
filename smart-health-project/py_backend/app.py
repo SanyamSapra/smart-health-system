@@ -15,10 +15,19 @@ app = Flask(__name__)
 app.config["PORT"] = int(os.getenv("PORT", "5050"))
 app.config["JSON_SORT_KEYS"] = False
 
+client_origins = [
+    "http://localhost:5173",
+    *[
+        origin.strip()
+        for origin in os.getenv("CLIENT_URL", "").split(",")
+        if origin.strip()
+    ],
+]
+
 CORS(
     app,
     supports_credentials=True,
-    origins=[os.getenv("CLIENT_URL", "http://localhost:5173")],
+    origins=client_origins,
 )
 
 

@@ -54,7 +54,9 @@ const Login = () => {
 
       if (data.success) {
         toast.success(
-          mode === "signup" ? "Account created successfully!" : "Login successful!"
+          mode === "signup"
+            ? "Account created successfully!"
+            : data.message || "Login successful!"
         );
         if (mode === "signup") {
           sessionStorage.setItem("pendingSignupEmail", data.email || email.trim());

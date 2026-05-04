@@ -11,6 +11,17 @@ const generateOtp = () => {
   return { otp, hashed };
 };
 
+const sendVerificationEmail = async (email, otp) => {
+  await transporter.sendMail({
+    from: `"Smart Health System" <${process.env.SENDER_EMAIL}>`,
+    to: email,
+    subject: "Verify Your Email",
+    html: `<h2>Email Verification</h2>
+           <p>Your OTP is: <b>${otp}</b></p>
+           <p>This OTP expires in 10 minutes.</p>`,
+  });
+};
+
 // Create JWT token for authentication
 const signToken = (userId) =>
   jwt.sign({ id: userId }, process.env.JWT_SECRET, { expiresIn: "7d" });
@@ -135,14 +146,7 @@ export const registerUser = async (req, res) => {
       verifyOtpExpireAt: Date.now() + 10 * 60 * 1000,
     };
 
-    await transporter.sendMail({
-      from: `"Smart Health System" <${process.env.SENDER_EMAIL}>`,
-      to: pendingSignup.email,
-      subject: "Verify Your Email",
-      html: `<h2>Email Verification</h2>
-             <p>Your OTP is: <b>${otp}</b></p>
-             <p>This OTP expires in 10 minutes.</p>`,
-    });
+    await sendVerificationEmail(pendingSignup.email, otp);
 
     setPendingSignupCookie(res, pendingSignup);
 
@@ -186,11 +190,23 @@ export const login = async (req, res) => {
     }
 
     const token = signToken(user._id);
+
+    if (!user.isAccountVerified) {
+      const { otp, hashed } = generateOtp();
+      user.verifyOtp = hashed;
+      user.verifyOtpExpireAt = Date.now() + 10 * 60 * 1000;
+      await user.save();
+      await sendVerificationEmail(user.email, otp);
+    }
+
     setAuthCookie(res, token);
 
     return res.status(200).json({
       success: true,
-      message: "Login successful",
+      message: user.isAccountVerified
+        ? "Login successful"
+        : "Login successful. Verification OTP sent.",
+      pendingVerification: !user.isAccountVerified,
       user: {
         id: user._id,
         name: user.name,
@@ -240,14 +256,7 @@ export const sendVerifyOtp = async (req, res) => {
       legacyUser.verifyOtpExpireAt = Date.now() + 10 * 60 * 1000;
       await legacyUser.save();
 
-      await transporter.sendMail({
-        from: `"Smart Health System" <${process.env.SENDER_EMAIL}>`,
-        to: legacyUser.email,
-        subject: "Verify Your Email",
-        html: `<h2>Email Verification</h2>
-               <p>Your OTP is: <b>${otp}</b></p>
-               <p>This OTP expires in 10 minutes.</p>`,
-      });
+      await sendVerificationEmail(legacyUser.email, otp);
 
       return res.json({ success: true, message: "OTP sent" });
     }
@@ -257,14 +266,7 @@ export const sendVerifyOtp = async (req, res) => {
     pendingSignup.verifyOtp = hashed;
     pendingSignup.verifyOtpExpireAt = Date.now() + 10 * 60 * 1000;
 
-    await transporter.sendMail({
-      from: `"Smart Health System" <${process.env.SENDER_EMAIL}>`,
-      to: pendingSignup.email,
-      subject: "Verify Your Email",
-      html: `<h2>Email Verification</h2>
-             <p>Your OTP is: <b>${otp}</b></p>
-             <p>This OTP expires in 10 minutes.</p>`,
-    });
+    await sendVerificationEmail(pendingSignup.email, otp);
 
     setPendingSignupCookie(res, pendingSignup);
 

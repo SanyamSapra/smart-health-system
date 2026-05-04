@@ -9,12 +9,22 @@ import aiRoutes from "./routes/aiRoutes.js";
 
 const app = express();
 
+app.set("trust proxy", 1);
+
+const parseOrigins = (value = "") =>
+  value
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
+const allowedOrigins = [
+  "http://localhost:5173",
+  ...parseOrigins(process.env.CLIENT_URL),
+];
+
 // Basic middleware
 app.use(cors({
-  origin: [
-    "http://localhost:5173",
-    "https://smart-health-system-eta.vercel.app"
-  ],
+  origin: allowedOrigins,
   credentials: true
 }));
 

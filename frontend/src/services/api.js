@@ -1,8 +1,9 @@
 import axios from "axios";
+import { BACKEND_URL } from "./config";
 
 // Shared axios instance for all API requests
 const api = axios.create({
-  baseURL: `${import.meta.env.VITE_BACKEND_URL}/api`,
+  baseURL: `${BACKEND_URL}/api`,
   withCredentials: true, // allows cookies (httpOnly auth cookie)
 });
 
