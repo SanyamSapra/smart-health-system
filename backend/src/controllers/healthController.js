@@ -23,6 +23,10 @@ function getPagination(query) {
   };
 }
 
+function hasPagination(query) {
+  return query.page !== undefined || query.limit !== undefined;
+}
+
 function sendValidationError(res, error) {
   if (error.name === "ValidationError") {
     const messages = Object.values(error.errors).map((e) => e.message);
@@ -291,7 +295,10 @@ export const getHealthHistory = async (req, res) => {
     const userId = req.userId;
 
     const days = Math.min(parseInt(req.query.days) || 30, 365);
-    const { page, limit } = getPagination(req.query);
+    const shouldPaginate = hasPagination(req.query);
+    const { page, limit } = shouldPaginate
+      ? getPagination(req.query)
+      : { page: 1, limit: null };
     const since = new Date();
     since.setDate(since.getDate() - days);
 
@@ -301,22 +308,26 @@ export const getHealthHistory = async (req, res) => {
     };
 
     const total = await HealthLog.countDocuments(filter);
-    const logs = await HealthLog.find({
+    const query = HealthLog.find({
       ...filter,
     })
       .sort({ loggedAt: 1 }) // oldest → newest (better for charts)
-      .select("weight systolicBP diastolicBP sugarLevel loggedAt")
-      .skip((page - 1) * limit)
-      .limit(limit);
+      .select("weight systolicBP diastolicBP sugarLevel loggedAt");
+
+    if (shouldPaginate) {
+      query.skip((page - 1) * limit).limit(limit);
+    }
+
+    const logs = await query;
 
     return res.json({
       success: true,
       count: logs.length,
       pagination: {
         page,
-        limit,
+        limit: shouldPaginate ? limit : total,
         total,
-        totalPages: Math.ceil(total / limit),
+        totalPages: shouldPaginate ? Math.ceil(total / limit) : 1,
       },
       trends: getTrendMessages(logs),
       loggedToday: hasLoggedToday(logs),

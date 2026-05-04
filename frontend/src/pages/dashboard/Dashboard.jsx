@@ -53,6 +53,22 @@ const sugarBarColor = (v) => {
   return "#2563eb";
 };
 
+const getCompactMetricDomain = (data, key = "avg", padding = 0.3) => {
+  const values = data
+    .map((item) => item[key])
+    .filter((value) => Number.isFinite(value));
+
+  if (!values.length) return ["auto", "auto"];
+
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+
+  return [
+    Number((min - padding).toFixed(1)),
+    Number((max + padding).toFixed(1)),
+  ];
+};
+
 const formatConditionDate = (value) => {
   if (!value) return "Recently";
 
@@ -333,13 +349,14 @@ const Dashboard = () => {
   const renderWeightChart = () => {
     if (!weightData.length) return <EmptyState />;
     const tickFmt = (d) => formatChartDate(d, weightTimeframe);
+    const weightDomain = getCompactMetricDomain(weightData);
     if (weightChartType === "bar") {
       return (
         <ResponsiveContainer width="100%" height={220}>
           <BarChart data={weightData} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
             <XAxis dataKey="date" tickFormatter={tickFmt} tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
-            <YAxis domain={["auto", "auto"]} tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
+            <YAxis domain={weightDomain} tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
             <Tooltip content={<CustomTooltip unit="kg" mode={weightTimeframe} />} />
             <Bar dataKey="avg" name="Avg Weight" radius={[6, 6, 0, 0]} maxBarSize={40}>
               {weightData.map((_, i) => <Cell key={i} fill="#3b82f6" fillOpacity={0.85} />)}
@@ -359,7 +376,7 @@ const Dashboard = () => {
           </defs>
           <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
           <XAxis dataKey="date" tickFormatter={tickFmt} tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
-          <YAxis domain={["auto", "auto"]} tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
+          <YAxis domain={weightDomain} tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
           <Tooltip content={<CustomTooltip unit="kg" mode={weightTimeframe} />} />
           <Area type="monotone" dataKey="avg" name="Weight" stroke="#3b82f6" strokeWidth={2.5}
             fill="url(#weightGradient)" dot={{ r: 4, fill: "#3b82f6", stroke: "#fff", strokeWidth: 2 }} activeDot={{ r: 6 }} />

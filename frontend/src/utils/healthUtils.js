@@ -1,18 +1,30 @@
+const getLocalDateKey = (date) =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(
+    date.getDate()
+  ).padStart(2, "0")}`;
+
 // Shared bucket key helper — fixes duplication and Monday week start
 const getBucketKey = (loggedAt, view) => {
   const date = new Date(loggedAt);
 
   if (view === "daily") {
-    return date.toISOString().split("T")[0];
+    return getLocalDateKey(date);
   }
 
   if (view === "weekly") {
     const d = new Date(date);
     d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
-    return d.toISOString().split("T")[0];
+    return getLocalDateKey(d);
   }
 
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+};
+
+const getVisibleBucketLimit = (view) => {
+  if (view === "daily") return 10;
+  if (view === "weekly") return 8;
+  if (view === "monthly") return 6;
+  return 10;
 };
 
 export const aggregateMetrics = (logs, view, metric) => {
@@ -38,7 +50,8 @@ export const aggregateMetrics = (logs, view, metric) => {
       min: Math.min(...values),
       max: Math.max(...values),
       count: values.length,
-    }));
+    }))
+    .slice(-getVisibleBucketLimit(view));
 };
 
 export const aggregateBloodPressure = (logs, view) => {
@@ -67,5 +80,6 @@ export const aggregateBloodPressure = (logs, view) => {
       diastolicBP: dia.length
         ? Number((dia.reduce((s, v) => s + v, 0) / dia.length).toFixed(1))
         : null,
-    }));
+    }))
+    .slice(-getVisibleBucketLimit(view));
 };
