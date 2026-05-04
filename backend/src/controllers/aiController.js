@@ -299,7 +299,7 @@ User question:
 ${message}
 
 Rules:
-- Reply in simple language in 3–5 short lines
+- Reply in simple language in 5-7 short lines or in points based on the question
 - If there is an active predicted disease, answer the user's question with that possible condition in mind when it is relevant
 - If there is no active predicted disease, answer normally and do not invent a disease
 - Say "possible" or "predicted" condition, never confirmed disease
@@ -370,7 +370,7 @@ Rules:
 - Say possible condition or predicted risk, never diagnosis
 - 1 insight about health context
 - 2 diet tips
-- 1 fitness tip
+- 2 fitness tip
 - 1 precaution/warning
 - Wellness advice only, no medicines, no dosage
 - Do not repeat trend detection statements
