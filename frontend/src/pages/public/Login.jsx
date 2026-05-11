@@ -97,7 +97,11 @@ const Login = () => {
         toast.error(data.message);
       }
     } catch (error) {
-      toast.error(error.response?.data?.message || error.message);
+      toast.error(
+        error.code === "ECONNABORTED"
+          ? "Request timed out. Please check the email service settings and try again."
+          : error.response?.data?.message || error.message
+      );
     } finally {
       setLoading(false);
     }

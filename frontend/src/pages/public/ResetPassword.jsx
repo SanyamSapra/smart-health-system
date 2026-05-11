@@ -27,7 +27,11 @@ const ResetPassword = () => {
       setResetToken("");
       setStep(2);
     } catch (error) {
-      toast.error(error.response?.data?.message || "Failed to send OTP");
+      toast.error(
+        error.code === "ECONNABORTED"
+          ? "Request timed out. Please check the email service settings and try again."
+          : error.response?.data?.message || "Failed to send OTP"
+      );
     } finally {
       setLoading(false);
     }
