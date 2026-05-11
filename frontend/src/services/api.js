@@ -5,6 +5,7 @@ import { BACKEND_URL } from "./config";
 const api = axios.create({
   baseURL: `${BACKEND_URL}/api`,
   withCredentials: true, // allows cookies (httpOnly auth cookie)
+  timeout: 30000,
 });
 
 // Handle global API errors like expired sessions

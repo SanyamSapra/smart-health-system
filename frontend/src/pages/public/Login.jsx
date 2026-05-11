@@ -9,7 +9,8 @@ import { Mail, Lock, User, LogIn, UserPlus, HeartPulse } from "lucide-react";
 const Login = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { isLoggedIn, setIsLoggedIn, getUserData } = useContext(AppContext);
+  const { isLoggedIn, setIsLoggedIn, userData, setUserData, getUserData } =
+    useContext(AppContext);
 
   const [mode, setMode] = useState(location.state?.mode === "signup" ? "signup" : "login");
   const [name, setName] = useState("");
@@ -18,10 +19,14 @@ const Login = () => {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (isLoggedIn) {
+    if (isLoggedIn && userData?.isAccountVerified && userData?.profileCompleted) {
       navigate("/app/dashboard", { replace: true });
+    } else if (isLoggedIn && userData?.isAccountVerified) {
+      navigate("/complete-profile", { replace: true });
+    } else if (isLoggedIn && userData && !userData.isAccountVerified) {
+      navigate("/verify-email", { replace: true });
     }
-  }, [isLoggedIn, navigate]);
+  }, [isLoggedIn, userData, navigate]);
 
   useEffect(() => {
     if (location.state?.mode === "signup") {
@@ -30,17 +35,19 @@ const Login = () => {
     }
   }, [location.pathname, location.state?.mode, navigate]);
 
-  const handleAuthSuccess = async () => {
+  const handleAuthSuccess = async (authUser) => {
+    setUserData(authUser);
     setIsLoggedIn(true);
-    const user = await getUserData();
 
-    if (!user?.isAccountVerified) {
+    if (!authUser?.isAccountVerified) {
       navigate("/verify-email");
-    } else if (!user?.profileCompleted) {
+    } else if (!authUser?.profileCompleted) {
       navigate("/complete-profile");
     } else {
       navigate("/app/dashboard");
     }
+
+    getUserData();
   };
 
   const onSubmitHandler = async (e) => {
@@ -60,11 +67,13 @@ const Login = () => {
         );
         if (mode === "signup") {
           sessionStorage.setItem("pendingSignupEmail", data.email || email.trim());
+          setUserData(data.user);
+          setIsLoggedIn(true);
           navigate("/verify-email", {
             state: { email: data.email || email.trim() },
           });
         } else {
-          await handleAuthSuccess();
+          await handleAuthSuccess(data.user);
         }
       } else {
         toast.error(data.message);
