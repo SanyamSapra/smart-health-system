@@ -14,6 +14,7 @@ if (process.env.NODE_ENV === "production") {
   const missing = requiredForProduction.filter((key) => !process.env[key]);
   const hasEmailService =
     process.env.BREVO_API_KEY ||
+    process.env.RESEND_API_KEY ||
     (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
 
   if (!hasFrontendUrl) {
@@ -21,7 +22,7 @@ if (process.env.NODE_ENV === "production") {
   }
 
   if (!hasEmailService) {
-    missing.push("BREVO_API_KEY or SMTP_HOST/SMTP_USER/SMTP_PASS");
+    missing.push("BREVO_API_KEY or RESEND_API_KEY or SMTP_HOST/SMTP_USER/SMTP_PASS");
   }
 
   if (missing.length > 0) {

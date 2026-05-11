@@ -514,3 +514,10 @@ export const resetPassword = async (req, res) => {
 export const isAuthenticated = async (req, res) => {
   return res.json({ success: true });
 };
+
+export const emailStatus = (req, res) => {
+  return res.json({
+    success: true,
+    email: transporter.getStatus(),
+  });
+};

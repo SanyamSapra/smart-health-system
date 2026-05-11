@@ -9,6 +9,7 @@ import {
   sendResetOtp,
   verifyResetOtp,
   resetPassword,
+  emailStatus,
 } from "../controllers/auth.controller.js";
 import userAuth from "../middlewares/userAuth.js";
 import { authLimiter, otpLimiter } from "../config/rateLimiter.js";
@@ -23,6 +24,7 @@ router.post("/verify-account", otpLimiter, verifyEmail);
 router.post("/send-reset-otp", otpLimiter, sendResetOtp);
 router.post("/verify-reset-otp", otpLimiter, verifyResetOtp);
 router.post("/reset-password", otpLimiter, resetPassword);
+router.get("/email-status", emailStatus);
 
 // Protected routes
 router.post("/logout", userAuth, logout);
