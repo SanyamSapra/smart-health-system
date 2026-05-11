@@ -1,6 +1,7 @@
 import api from "../services/api";
 import { createContext, useCallback, useEffect, useState } from "react";
 import { toast } from "react-toastify";
+import { clearAuthToken } from "../services/authToken";
 
 export const AppContext = createContext();
 
@@ -23,6 +24,7 @@ export const AppContextProvider = ({ children }) => {
     } catch (error) {
       // 401 means not logged in — not an error worth toasting
       if (error.response?.status === 401) {
+        clearAuthToken();
         setIsLoggedIn(false);
         setUserData(null);
         return null;
@@ -44,6 +46,7 @@ export const AppContextProvider = ({ children }) => {
     } catch {
       // still clear local state even if the request fails
     } finally {
+      clearAuthToken();
       setIsLoggedIn(false);
       setUserData(null);
     }

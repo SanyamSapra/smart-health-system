@@ -5,6 +5,7 @@ import api from "../../services/api";
 import { toast } from "react-toastify";
 import { motion } from "framer-motion";
 import { ArrowLeft, MailCheck, RefreshCw, ShieldCheck } from "lucide-react";
+import { saveAuthToken } from "../../services/authToken";
 
 const VerifyEmail = () => {
   const { userData, setUserData, getUserData, logout } = useContext(AppContext);
@@ -79,6 +80,7 @@ const VerifyEmail = () => {
       });
 
       if (data.success) {
+        saveAuthToken(data.token);
         toast.success("Email verified successfully");
         sessionStorage.removeItem("pendingSignupEmail");
         const user = await getUserData();

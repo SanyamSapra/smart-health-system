@@ -91,7 +91,11 @@ const clearPendingSignupCookie = (res) => {
 };
 
 const getUserFromToken = async (req) => {
-  const token = req.cookies?.token;
+  const authHeader = req.headers.authorization || "";
+  const bearerToken = authHeader.startsWith("Bearer ")
+    ? authHeader.slice(7)
+    : "";
+  const token = req.cookies?.token || bearerToken;
   if (!token) return null;
 
   try {
@@ -188,6 +192,7 @@ export const registerUser = async (req, res) => {
       message: "Registration successful. Please verify your email.",
       pendingVerification: true,
       nextStep: "verify-email",
+      token,
       email: user.email,
       user: formatUser(user),
     });
@@ -243,6 +248,7 @@ export const login = async (req, res) => {
         : "Login successful. Verification OTP sent.",
       pendingVerification: !user.isAccountVerified,
       nextStep: getNextStep(user),
+      token,
       user: formatUser(user),
     });
   } catch (error) {
@@ -300,7 +306,12 @@ export const sendVerifyOtp = async (req, res) => {
     setAuthCookie(res, token);
     clearPendingSignupCookie(res);
 
-    return res.json({ success: true, message: "OTP sent", email: user.email });
+    return res.json({
+      success: true,
+      message: "OTP sent",
+      token,
+      email: user.email,
+    });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -351,6 +362,7 @@ export const verifyEmail = async (req, res) => {
     return res.json({
       success: true,
       message: "Email verified successfully",
+      token,
       user: formatUser(user),
     });
   } catch (error) {

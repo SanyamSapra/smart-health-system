@@ -2,7 +2,12 @@ import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
 
 const userAuth = (req, res, next) => {
-  const { token } = req.cookies;
+  const cookieToken = req.cookies?.token;
+  const authHeader = req.headers.authorization || "";
+  const bearerToken = authHeader.startsWith("Bearer ")
+    ? authHeader.slice(7)
+    : "";
+  const token = cookieToken || bearerToken;
 
   if (!token) {
     return res.status(401).json({

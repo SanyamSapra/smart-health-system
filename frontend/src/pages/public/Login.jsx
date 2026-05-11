@@ -5,6 +5,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
 import { motion } from "framer-motion";
 import { Mail, Lock, User, LogIn, UserPlus, HeartPulse } from "lucide-react";
+import { saveAuthToken } from "../../services/authToken";
 
 const Login = () => {
   const navigate = useNavigate();
@@ -72,6 +73,7 @@ const Login = () => {
         : await api.post("/auth/login", { email, password });
 
       if (data.success) {
+        saveAuthToken(data.token);
         toast.success(
           mode === "signup"
             ? "Account created successfully!"
