@@ -18,6 +18,16 @@ const Login = () => {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
+  const goToNextStep = (nextStep) => {
+    if (nextStep === "verify-email") {
+      navigate("/verify-email");
+    } else if (nextStep === "complete-profile") {
+      navigate("/complete-profile");
+    } else {
+      navigate("/app/dashboard");
+    }
+  };
+
   useEffect(() => {
     if (isLoggedIn && userData?.isAccountVerified && userData?.profileCompleted) {
       navigate("/app/dashboard", { replace: true });
@@ -35,16 +45,18 @@ const Login = () => {
     }
   }, [location.pathname, location.state?.mode, navigate]);
 
-  const handleAuthSuccess = async (authUser) => {
+  const handleAuthSuccess = async (authUser, nextStep) => {
     setUserData(authUser);
     setIsLoggedIn(true);
 
-    if (!authUser?.isAccountVerified) {
-      navigate("/verify-email");
-    } else if (!authUser?.profileCompleted) {
+    if (nextStep) {
+      goToNextStep(nextStep);
+    } else if (authUser?.isAccountVerified && authUser?.profileCompleted) {
+      navigate("/app/dashboard");
+    } else if (authUser?.isAccountVerified) {
       navigate("/complete-profile");
     } else {
-      navigate("/app/dashboard");
+      navigate("/verify-email");
     }
 
     getUserData();
@@ -69,11 +81,15 @@ const Login = () => {
           sessionStorage.setItem("pendingSignupEmail", data.email || email.trim());
           setUserData(data.user);
           setIsLoggedIn(true);
-          navigate("/verify-email", {
-            state: { email: data.email || email.trim() },
-          });
+          if (data.nextStep === "verify-email") {
+            navigate("/verify-email", {
+              state: { email: data.email || email.trim() },
+            });
+          } else {
+            goToNextStep(data.nextStep);
+          }
         } else {
-          await handleAuthSuccess(data.user);
+          await handleAuthSuccess(data.user, data.nextStep);
         }
       } else {
         toast.error(data.message);

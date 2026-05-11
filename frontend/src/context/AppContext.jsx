@@ -1,5 +1,5 @@
 import api from "../services/api";
-import { createContext, useEffect, useState } from "react";
+import { createContext, useCallback, useEffect, useState } from "react";
 import { toast } from "react-toastify";
 
 export const AppContext = createContext();
@@ -9,7 +9,7 @@ export const AppContextProvider = ({ children }) => {
   const [userData, setUserData] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  const getUserData = async () => {
+  const getUserData = useCallback(async () => {
     try {
       const { data } = await api.get("/user/me");
 
@@ -31,12 +31,12 @@ export const AppContextProvider = ({ children }) => {
       toast.error(error.response?.data?.message || error.message);
       return null;
     }
-  };
+  }, []);
 
   // Single call on app load — replaces the old checkAuthStatus + getUserData chain
   useEffect(() => {
     getUserData().finally(() => setLoading(false));
-  }, []);
+  }, [getUserData]);
 
   const logout = async () => {
     try {

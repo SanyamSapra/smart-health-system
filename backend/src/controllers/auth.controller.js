@@ -40,6 +40,12 @@ const formatUser = (user) => ({
   profileCompleted: user.profileCompleted,
 });
 
+const getNextStep = (user) => {
+  if (!user.isAccountVerified) return "verify-email";
+  if (!user.profileCompleted) return "complete-profile";
+  return "dashboard";
+};
+
 // Create JWT token for authentication
 const signToken = (userId) =>
   jwt.sign({ id: userId }, process.env.JWT_SECRET, { expiresIn: "7d" });
@@ -181,6 +187,7 @@ export const registerUser = async (req, res) => {
       success: true,
       message: "Registration successful. Please verify your email.",
       pendingVerification: true,
+      nextStep: "verify-email",
       email: user.email,
       user: formatUser(user),
     });
@@ -235,6 +242,7 @@ export const login = async (req, res) => {
         ? "Login successful"
         : "Login successful. Verification OTP sent.",
       pendingVerification: !user.isAccountVerified,
+      nextStep: getNextStep(user),
       user: formatUser(user),
     });
   } catch (error) {
@@ -257,6 +265,20 @@ export const logout = (req, res) => {
 // Send email verification OTP again
 export const sendVerifyOtp = async (req, res) => {
   try {
+    const email = req.body?.email?.toLowerCase()?.trim();
+    if (email) {
+      const existingUser = await User.findOne({ email });
+      if (existingUser?.isAccountVerified) {
+        return res.json({
+          success: true,
+          alreadyVerified: true,
+          nextStep: getNextStep(existingUser),
+          message: "Email is already verified",
+          user: formatUser(existingUser),
+        });
+      }
+    }
+
     const user = await findUnverifiedUserForOtp(req);
 
     if (!user) {

@@ -7,7 +7,7 @@ import { motion } from "framer-motion";
 import { ArrowLeft, MailCheck, RefreshCw, ShieldCheck } from "lucide-react";
 
 const VerifyEmail = () => {
-  const { userData, getUserData, logout } = useContext(AppContext);
+  const { userData, setUserData, getUserData, logout } = useContext(AppContext);
   const navigate = useNavigate();
   const location = useLocation();
   const pendingEmail =
@@ -20,9 +20,17 @@ const VerifyEmail = () => {
 
   useEffect(() => {
     if (userData?.isAccountVerified) {
-      navigate(userData.profileCompleted ? "/app/dashboard" : "/complete-profile");
+      navigate(userData.profileCompleted ? "/app/dashboard" : "/complete-profile", {
+        replace: true,
+      });
     }
   }, [userData, navigate]);
+
+  useEffect(() => {
+    if (!userData) {
+      getUserData();
+    }
+  }, [userData, getUserData]);
 
   useEffect(() => {
     if (cooldown <= 0) return;
@@ -95,6 +103,17 @@ const VerifyEmail = () => {
       });
 
       if (data.success) {
+        if (data.alreadyVerified) {
+          toast.info("Email is already verified");
+          sessionStorage.removeItem("pendingSignupEmail");
+          setUserData(data.user);
+          navigate(
+            data.nextStep === "complete-profile" ? "/complete-profile" : "/app/dashboard",
+            { replace: true }
+          );
+          return;
+        }
+
         toast.success("OTP sent again");
         setOtp(["", "", "", "", "", ""]);
         setCooldown(60);
