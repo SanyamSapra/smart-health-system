@@ -130,7 +130,7 @@ export const getLatestHealthSummary = async (req, res) => {
     const userId = req.userId;
 
     const user = await User.findById(userId).select(
-      "height dateOfBirth email lastReminderSentAt activeCondition"
+      "height dateOfBirth email isAccountVerified profileCompleted lastReminderSentAt activeCondition"
     );
     if (!user) {
       return res

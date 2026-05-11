@@ -13,6 +13,14 @@ const generateOtp = () => {
   return { otp, hashed };
 };
 
+const hashValue = (value) =>
+  crypto.createHash("sha256").update(String(value)).digest("hex");
+
+const generateResetToken = () => {
+  const token = crypto.randomBytes(32).toString("hex");
+  return { token, hashed: hashValue(token) };
+};
+
 const sendVerificationEmail = async (email, otp) => {
   await transporter.sendMail({
     from: `"Smart Health System" <${process.env.SENDER_EMAIL}>`,
@@ -349,6 +357,8 @@ export const sendResetOtp = async (req, res) => {
 
     user.resetOtp = hashed;
     user.resetOtpExpireAt = Date.now() + 10 * 60 * 1000;
+    user.resetOtpVerified = false;
+    user.resetToken = "";
 
     await user.save();
 
@@ -383,24 +393,23 @@ export const verifyResetOtp = async (req, res) => {
     if (!user)
       return res.status(404).json({ success: false, message: "User not found" });
 
-    if (user.resetOtpExpireAt < Date.now())
+    if (!user.resetOtp || !user.resetOtpExpireAt || user.resetOtpExpireAt < Date.now())
       return res.status(400).json({ success: false, message: "OTP expired" });
 
-    const hashedInput = crypto
-      .createHash("sha256")
-      .update(String(otp))
-      .digest("hex");
+    const hashedInput = hashValue(otp);
 
     if (user.resetOtp !== hashedInput)
       return res.status(400).json({ success: false, message: "Invalid OTP" });
 
-    // Mark OTP as verified and clear it so it can't be reused
+    const { token, hashed } = generateResetToken();
+
+    // Mark OTP as verified. Keep the expiry time so resetPassword can still enforce it.
     user.resetOtpVerified = true;
     user.resetOtp = "";
-    user.resetOtpExpireAt = null;
+    user.resetToken = hashed;
     await user.save();
 
-    return res.json({ success: true, message: "OTP verified" });
+    return res.json({ success: true, message: "OTP verified", resetToken: token });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -409,12 +418,12 @@ export const verifyResetOtp = async (req, res) => {
 // Reset password using OTP
 export const resetPassword = async (req, res) => {
   try {
-    const { email, newPassword } = req.body;
+    const { email, newPassword, resetToken } = req.body;
 
-    if (!email || !newPassword)
+    if (!email || !newPassword || !resetToken)
       return res.status(400).json({
         success: false,
-        message: "Email and new password are required",
+        message: "Email, reset token, and new password are required",
       });
 
     if (newPassword.length < 6)
@@ -429,14 +438,36 @@ export const resetPassword = async (req, res) => {
       return res.status(404).json({ success: false, message: "User not found" });
 
     // Check the verified flag instead of re-accepting the raw OTP
-    if (!user.resetOtpVerified)
+    if (!user.resetOtpVerified || !user.resetOtpExpireAt || !user.resetToken)
       return res.status(400).json({
         success: false,
         message: "Please verify your OTP first",
       });
 
+    if (user.resetOtpExpireAt < Date.now()) {
+      user.resetOtpVerified = false;
+      user.resetOtpExpireAt = null;
+      user.resetToken = "";
+      await user.save();
+
+      return res.status(400).json({
+        success: false,
+        message: "OTP expired. Please request a new OTP.",
+      });
+    }
+
+    if (user.resetToken !== hashValue(resetToken)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid reset session. Please verify your OTP again.",
+      });
+    }
+
     user.password = await bcrypt.hash(newPassword, 10);
-    user.resetOtpVerified = false; // clear the flag
+    user.resetOtp = "";
+    user.resetOtpExpireAt = null;
+    user.resetOtpVerified = false;
+    user.resetToken = "";
     await user.save();
 
     return res.json({ success: true, message: "Password reset successful" });

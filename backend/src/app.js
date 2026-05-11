@@ -14,7 +14,7 @@ app.set("trust proxy", 1);
 const parseOrigins = (value = "") =>
   value
     .split(",")
-    .map((origin) => origin.trim())
+    .map((origin) => origin.trim().replace(/\/$/, ""))
     .filter(Boolean);
 
 const allowedOrigins = [

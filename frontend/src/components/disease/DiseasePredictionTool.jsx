@@ -134,10 +134,6 @@ const RED_FLAG_SYMPTOMS = new Set([
 const DURATIONS = ["Today", "2-3 days", "4-7 days", "More than a week"];
 const SEVERITIES = ["Mild", "Moderate", "Severe"];
 
-const allSymptoms = SYMPTOM_GROUPS.flatMap((group) =>
-  group.symptoms.map(([key, label]) => ({ key, label, group: group.title }))
-);
-
 const getConfidenceTone = (confidence = 0) => {
   if (confidence >= 70) return "bg-green-500";
   if (confidence >= 40) return "bg-yellow-500";
@@ -172,11 +168,6 @@ const DiseasePredictionTool = ({ compact = false }) => {
       mounted = false;
     };
   }, []);
-
-  const selectedLabels = useMemo(() => {
-    const labelMap = new Map(allSymptoms.map((item) => [item.key, item.label]));
-    return selectedSymptoms.map((key) => labelMap.get(key) || key);
-  }, [selectedSymptoms]);
 
   const redFlags = selectedSymptoms.filter((item) => RED_FLAG_SYMPTOMS.has(item));
   const visibleGroups = useMemo(() => {

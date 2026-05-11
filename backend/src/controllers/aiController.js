@@ -12,7 +12,11 @@ import {
 const GEMINI_MODEL = "gemini-3-flash-preview";
 const INSIGHTS_CACHE_HOURS = 24;
 const CHAT_LIMIT_PER_DAY = 10;
-const DISEASE_API_URL = process.env.DISEASE_API_URL || "http://localhost:5050";
+const DISEASE_API_URL = (
+  process.env.DISEASE_API_URL ||
+  process.env.DISEASE_PREDICTION_API_URL ||
+  "http://localhost:5050"
+).replace(/\/$/, "");
 
 const emptyConditionInsights = {
   disease: "",

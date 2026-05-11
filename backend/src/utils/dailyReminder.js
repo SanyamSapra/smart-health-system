@@ -3,7 +3,7 @@ import transporter from "../config/nodemailer.js";
 const REMINDER_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
 export async function checkAndSendDailyReminder(user) {
-  if (!user?.email) {
+  if (!user?.email || !user.isAccountVerified || !user.profileCompleted) {
     return false;
   }
 

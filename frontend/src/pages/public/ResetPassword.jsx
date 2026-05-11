@@ -13,6 +13,7 @@ const ResetPassword = () => {
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [otp, setOtp] = useState(["", "", "", "", "", ""]);
+  const [resetToken, setResetToken] = useState("");
 
   const inputRefs = useRef([]);
 
@@ -23,6 +24,7 @@ const ResetPassword = () => {
     try {
       await api.post("/auth/send-reset-otp", { email });
       toast.success("OTP sent to your email");
+      setResetToken("");
       setStep(2);
     } catch (error) {
       toast.error(error.response?.data?.message || "Failed to send OTP");
@@ -66,10 +68,11 @@ const ResetPassword = () => {
 
     setLoading(true);
     try {
-      await api.post("/auth/verify-reset-otp", {
+      const { data } = await api.post("/auth/verify-reset-otp", {
         email,
         otp: otp.join(""),
       });
+      setResetToken(data.resetToken);
       setStep(3);
     } catch (error) {
       toast.error(error.response?.data?.message || "Invalid OTP");
@@ -93,7 +96,8 @@ const ResetPassword = () => {
     try {
       await api.post("/auth/reset-password", {
         email,
-        newPassword, // no longer sending otp here
+        newPassword,
+        resetToken,
       });
       toast.success("Password reset successful");
       navigate("/login");
