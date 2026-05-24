@@ -17,6 +17,31 @@ const DISEASE_API_URL = (
   process.env.DISEASE_PREDICTION_API_URL ||
   "http://localhost:5050"
 ).replace(/\/$/, "");
+const DISEASE_API_TIMEOUT_MS = Number(process.env.DISEASE_API_TIMEOUT_MS || 15000);
+
+const FALLBACK_DISEASE_MAP = {
+  fever: ["Malaria", "Typhoid Fever", "Dengue Fever", "Influenza", "COVID-19"],
+  mildfever: ["Influenza", "Viral Infection", "Common Cold", "Dengue Fever", "Malaria"],
+  highfever: ["Dengue Fever", "Malaria", "Typhoid Fever", "Pneumonia", "COVID-19"],
+  chills: ["Malaria", "Dengue Fever", "Influenza", "Typhoid Fever", "Pneumonia"],
+  cough: ["Bronchitis", "Pneumonia", "Asthma", "Tuberculosis", "COVID-19"],
+  breathlessness: ["Asthma", "Pneumonia", "Heart Failure", "COPD", "Anemia"],
+  chestpain: ["Angina Pectoris", "Myocardial Infarction", "GERD", "Pneumonia", "Pulmonary Embolism"],
+  headache: ["Migraine", "Tension Headache", "Hypertension", "Sinusitis", "Viral Infection"],
+  fatigue: ["Anemia", "Hypothyroidism", "Viral Infection", "Sleep Apnea", "Depression"],
+  nausea: ["Gastroenteritis", "Food Poisoning", "Migraine", "Peptic Ulcer", "Appendicitis"],
+  vomiting: ["Gastroenteritis", "Food Poisoning", "Migraine", "Hepatitis A", "Appendicitis"],
+  abdominalpain: ["Appendicitis", "Gastroenteritis", "Peptic Ulcer", "Gallstones", "IBS"],
+  diarrhoea: ["Gastroenteritis", "Food Poisoning", "Cholera", "IBS", "Typhoid Fever"],
+  skinrash: ["Allergic Reaction", "Chickenpox", "Measles", "Dengue Fever", "Eczema"],
+  itching: ["Allergic Reaction", "Eczema", "Fungal Infection", "Jaundice", "Scabies"],
+  jointpain: ["Dengue Fever", "Rheumatoid Arthritis", "Osteoarthritis", "Gout", "Chikungunya"],
+  musclepain: ["Viral Infection", "Dengue Fever", "Influenza", "Fibromyalgia", "Malaria"],
+  weightloss: ["Tuberculosis", "Type 2 Diabetes", "Hyperthyroidism", "Celiac Disease", "Lymphoma"],
+  irregularsugarlevel: ["Type 2 Diabetes", "Type 1 Diabetes", "Metabolic Syndrome", "Hyperthyroidism", "Stress Response"],
+  burningmicturition: ["Urinary Tract Infection", "Kidney Stone", "Urethritis", "Cystitis", "Prostatitis"],
+  continuousfeelofurine: ["Urinary Tract Infection", "Type 2 Diabetes", "Cystitis", "Diabetes Insipidus", "Prostatitis"],
+};
 
 const emptyConditionInsights = {
   disease: "",
@@ -132,6 +157,73 @@ function getPredictionConfidence(topDisease, predictions = []) {
 
 function normalizeDiseaseName(name) {
   return typeof name === "string" ? name.trim() : "";
+}
+
+function normalizeSymptomKey(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/['\-\u2013\u2014_]/g, " ")
+    .replace(/[^a-z0-9 ]/g, "")
+    .replace(/\s+/g, "");
+}
+
+function buildLocalDiseaseFallback(symptoms, extraText, clinicalContext, reason) {
+  const extraSymptoms = extraText
+    ? extraText.split(/[,;]+/).map(normalizeSymptomKey).filter(Boolean)
+    : [];
+  const normalizedSymptoms = [...new Set([...symptoms.map(normalizeSymptomKey), ...extraSymptoms])];
+  const scores = new Map();
+
+  normalizedSymptoms.forEach((symptom) => {
+    const diseases = FALLBACK_DISEASE_MAP[symptom] || [];
+    diseases.forEach((disease, index) => {
+      const current = scores.get(disease) || 0;
+      scores.set(disease, current + Math.max(10, 50 - index * 7));
+    });
+  });
+
+  if (!scores.size) {
+    ["Viral Infection", "Bacterial Infection", "Inflammatory Condition", "Allergic Reaction", "Metabolic Syndrome"].forEach(
+      (disease, index) => scores.set(disease, 45 - index * 6)
+    );
+  }
+
+  const maxScore = Math.max(...scores.values(), 1);
+  const predictions = [...scores.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([disease, score], index) => {
+      const confidence = Math.max(12, Math.min(88, Math.round((score / maxScore) * (78 - index * 5))));
+      return {
+        disease,
+        confidence,
+        probability: Number((confidence / 100).toFixed(4)),
+        rank: index + 1,
+        percentage: `${confidence}%`,
+      };
+    });
+
+  return {
+    success: true,
+    predictions,
+    topDisease: predictions[0]?.disease || "Unknown",
+    predictionMeta: {
+      source: "fallback_rules",
+      fallbackReason: reason,
+      inputSymptoms: normalizedSymptoms,
+      userSelectedSymptoms: symptoms,
+      modelSymptoms: [],
+      matchedSymptoms: [],
+      approximatedSymptoms: {},
+      unmatchedSymptoms: normalizedSymptoms,
+      contextDerivedSymptoms: [],
+      contextDerivedReasons: [],
+      contextRiskSignals: [],
+      clinicalContext,
+    },
+    patientContext: clinicalContext,
+  };
 }
 
 async function saveActiveCondition(user, predictionData) {
@@ -709,22 +801,42 @@ export const predictDisease = async (req, res) => {
 
     const clinicalContext = buildDiseasePredictionContext(context, { duration, severity });
 
-    const response = await fetch(`${DISEASE_API_URL}/api/disease/predict`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        symptoms,
-        extra_text: extraText,
-        clinical_context: clinicalContext,
-      }),
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), DISEASE_API_TIMEOUT_MS);
+    let data = null;
 
-    const data = await response.json().catch(() => null);
-    if (!response.ok || !data?.success) {
-      return res.status(response.status || 502).json({
-        success: false,
-        message: data?.message || "Disease prediction service is unavailable.",
+    try {
+      const response = await fetch(`${DISEASE_API_URL}/api/disease/predict`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
+        body: JSON.stringify({
+          symptoms,
+          extra_text: extraText,
+          clinical_context: clinicalContext,
+        }),
       });
+
+      data = await response.json().catch(() => null);
+      if (!response.ok || !data?.success) {
+        data = buildLocalDiseaseFallback(
+          symptoms,
+          extraText,
+          clinicalContext,
+          data?.message || `Python service returned HTTP ${response.status}.`
+        );
+      }
+    } catch (error) {
+      data = buildLocalDiseaseFallback(
+        symptoms,
+        extraText,
+        clinicalContext,
+        error.name === "AbortError"
+          ? "Python disease prediction service timed out."
+          : "Python disease prediction service is not reachable."
+      );
+    } finally {
+      clearTimeout(timeout);
     }
 
     const activeCondition = await saveActiveCondition(context.user, data);

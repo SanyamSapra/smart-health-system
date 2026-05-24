@@ -39,20 +39,35 @@ DASHBOARD_SYMPTOM_MAP = {
 
 DISEASE_MAP = {
     "fever": ["Malaria", "Typhoid Fever", "Dengue Fever", "Influenza", "COVID-19"],
+    "mildfever": ["Influenza", "Viral Infection", "Common Cold", "Dengue Fever", "Malaria"],
+    "highfever": ["Dengue Fever", "Malaria", "Typhoid Fever", "Pneumonia", "COVID-19"],
+    "chills": ["Malaria", "Dengue Fever", "Influenza", "Typhoid Fever", "Pneumonia"],
     "chest_pain": ["Myocardial Infarction", "Angina Pectoris", "Pneumonia", "GERD", "Pulmonary Embolism"],
+    "chestpain": ["Myocardial Infarction", "Angina Pectoris", "Pneumonia", "GERD", "Pulmonary Embolism"],
     "weight_loss": ["Tuberculosis", "Type 2 Diabetes", "Hyperthyroidism", "Celiac Disease", "Lymphoma"],
+    "weightloss": ["Tuberculosis", "Type 2 Diabetes", "Hyperthyroidism", "Celiac Disease", "Lymphoma"],
     "joint_pain": ["Rheumatoid Arthritis", "Osteoarthritis", "Gout", "Lupus", "Lyme Disease"],
+    "jointpain": ["Rheumatoid Arthritis", "Osteoarthritis", "Gout", "Lupus", "Lyme Disease"],
     "skin_rash": ["Psoriasis", "Eczema", "Chickenpox", "Measles", "Allergic Reaction"],
+    "skinrash": ["Psoriasis", "Eczema", "Chickenpox", "Measles", "Allergic Reaction"],
     "frequent_urination": ["Type 2 Diabetes", "Type 1 Diabetes", "Urinary Tract Infection", "Diabetes Insipidus", "Prostatitis"],
+    "continuousfeelofurine": ["Type 2 Diabetes", "Type 1 Diabetes", "Urinary Tract Infection", "Diabetes Insipidus", "Prostatitis"],
     "cough": ["Tuberculosis", "COVID-19", "Bronchitis", "Pneumonia", "Asthma"],
     "headache": ["Migraine", "Tension Headache", "Hypertension", "Meningitis", "Sinusitis"],
     "fatigue": ["Anemia", "Hypothyroidism", "Chronic Fatigue Syndrome", "Depression", "Sleep Apnea"],
     "shortness_of_breath": ["Asthma", "Heart Failure", "Pulmonary Embolism", "COPD", "Anemia"],
+    "breathlessness": ["Asthma", "Heart Failure", "Pulmonary Embolism", "COPD", "Anemia"],
     "nausea": ["Gastroenteritis", "Food Poisoning", "Peptic Ulcer", "Appendicitis", "Migraine"],
+    "vomiting": ["Gastroenteritis", "Food Poisoning", "Peptic Ulcer", "Appendicitis", "Migraine"],
     "abdominal_pain": ["Appendicitis", "Irritable Bowel Syndrome", "Peptic Ulcer", "Crohn's Disease", "Gallstones"],
+    "abdominalpain": ["Appendicitis", "Irritable Bowel Syndrome", "Peptic Ulcer", "Crohn's Disease", "Gallstones"],
+    "diarrhoea": ["Gastroenteritis", "Food Poisoning", "Cholera", "Irritable Bowel Syndrome", "Typhoid Fever"],
     "muscle_pain": ["Fibromyalgia", "Viral Infection", "Dengue Fever", "Lyme Disease", "Polymyositis"],
+    "musclepain": ["Fibromyalgia", "Viral Infection", "Dengue Fever", "Lyme Disease", "Polymyositis"],
     "yellowing_skin": ["Hepatitis A", "Hepatitis B", "Jaundice", "Cirrhosis", "Gallstones"],
+    "yellowishskin": ["Hepatitis A", "Hepatitis B", "Jaundice", "Cirrhosis", "Gallstones"],
     "excessive_thirst": ["Type 1 Diabetes", "Type 2 Diabetes", "Diabetes Insipidus", "Dehydration", "Hypercalcemia"],
+    "irregularsugarlevel": ["Type 1 Diabetes", "Type 2 Diabetes", "Diabetes Insipidus", "Dehydration", "Hypercalcemia"],
 }
 
 
@@ -64,6 +79,10 @@ def _unique(items: list[str]) -> list[str]:
             seen.add(item)
             result.append(item)
     return result
+
+
+def _compact_symptom_key(symptom: str) -> str:
+    return normalise_symptom(symptom).replace("_", "")
 
 
 @lru_cache(maxsize=1)
@@ -153,19 +172,30 @@ def resolve_symptoms(symptoms: list[str], extra_text: str = "") -> dict:
 
 
 def fallback_predict(symptoms: list[str]) -> list[dict]:
-    matching_key = next((symptom for symptom in symptoms if symptom in DISEASE_MAP), None)
-    base = DISEASE_MAP.get(
-        matching_key,
-        ["Viral Infection", "Bacterial Infection", "Autoimmune Disorder", "Metabolic Syndrome", "Inflammatory Condition"],
+    normalized = _unique(
+        [normalise_symptom(symptom) for symptom in symptoms]
+        + [_compact_symptom_key(symptom) for symptom in symptoms]
     )
+    scores: dict[str, int] = {}
 
-    predictions = []
-    for index, disease in enumerate(base):
-        bonus = sum(1 for symptom in symptoms if disease in DISEASE_MAP.get(symptom, [])) * 5
-        confidence = min(97, max(10, 85 - index * 11 + bonus))
-        predictions.append({"disease": disease, "confidence": confidence})
+    for symptom in normalized:
+        for index, disease in enumerate(DISEASE_MAP.get(symptom, [])):
+            scores[disease] = scores.get(disease, 0) + max(20, 85 - index * 11)
 
-    return sorted(predictions, key=lambda item: item["confidence"], reverse=True)
+    if not scores:
+        fallback = ["Viral Infection", "Bacterial Infection", "Autoimmune Disorder", "Metabolic Syndrome", "Inflammatory Condition"]
+        scores = {disease: 85 - index * 11 for index, disease in enumerate(fallback)}
+
+    max_score = max(scores.values())
+    predictions = [
+        {
+            "disease": disease,
+            "confidence": min(97, max(10, round((score / max_score) * 90))),
+        }
+        for disease, score in scores.items()
+    ]
+
+    return sorted(predictions, key=lambda item: item["confidence"], reverse=True)[:5]
 
 
 def _add_context_symptom(symptoms: list[str], symptom: str, reason: str, reasons: list[dict]) -> None:
@@ -273,6 +303,36 @@ def _format_model_predictions(raw_predictions: list[dict]) -> list[dict]:
     return formatted
 
 
+def _blend_with_clinical_prior(model_predictions: list[dict], prior_predictions: list[dict]) -> list[dict]:
+    scores: dict[str, dict] = {}
+
+    for item in model_predictions:
+        disease = item["disease"]
+        scores[disease] = {
+            **item,
+            "confidence": float(item["confidence"]),
+            "_score": float(item["confidence"]),
+        }
+
+    for item in prior_predictions:
+        disease = item["disease"]
+        current = scores.get(disease, {"disease": disease, "_score": 0})
+        current["_score"] = current.get("_score", 0) + float(item["confidence"]) * 0.65
+        current["confidence"] = max(float(current.get("confidence", 0)), float(item["confidence"]) * 0.65)
+        scores[disease] = current
+
+    blended = sorted(scores.values(), key=lambda item: item["_score"], reverse=True)[:5]
+    for rank, item in enumerate(blended, 1):
+        confidence = round(min(98, max(1, item["_score"])), 1)
+        item["rank"] = rank
+        item["confidence"] = confidence
+        item["probability"] = round(confidence / 100, 4)
+        item["percentage"] = f"{confidence:.1f}%"
+        item.pop("_score", None)
+
+    return blended
+
+
 def predict_with_model(
     symptoms: list[str],
     extra_text: str = "",
@@ -290,7 +350,9 @@ def predict_with_model(
 
     vector = build_symptom_vector(resolution["modelSymptoms"], checker.get_symptom_list())
     raw_predictions = checker.predict_from_vector(vector, top_n=top_n)
-    predictions = _format_model_predictions(raw_predictions)
+    model_predictions = _format_model_predictions(raw_predictions)
+    prior_predictions = fallback_predict(resolution["inputSymptoms"])
+    predictions = _blend_with_clinical_prior(model_predictions, prior_predictions)
 
     return {
         "predictions": predictions,
@@ -298,6 +360,7 @@ def predict_with_model(
         "meta": {
             **resolution,
             "source": "trained_model",
+            "rankingStrategy": "trained_model_with_clinical_prior",
             "userSelectedSymptoms": symptoms,
             "contextDerivedSymptoms": context_symptoms,
             "contextDerivedReasons": context_reasons,
