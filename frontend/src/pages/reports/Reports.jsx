@@ -227,6 +227,36 @@ function ReportCard({ report, onView, onAnalyze, onDelete, isAnalyzing }) {
 // ─── Report detail modal ──────────────────────────────────────────────────────
 function ReportModal({ report, onClose, onAnalyze, isAnalyzing }) {
   const hasExtracted = report.extractedValues && Object.keys(report.extractedValues).length > 0;
+  const [isOpeningFile, setIsOpeningFile] = useState(false);
+
+  async function handleOpenPdf() {
+    const reportTab = window.open("", "_blank");
+
+    if (!reportTab) {
+      toast.error("Please allow pop-ups to open this PDF");
+      return;
+    }
+
+    setIsOpeningFile(true);
+
+    try {
+      const response = await api.get(`/reports/${report._id}/file`, {
+        responseType: "blob",
+      });
+      const pdfBlob = new Blob([response.data], {
+        type: response.headers["content-type"] || "application/pdf",
+      });
+      const pdfUrl = URL.createObjectURL(pdfBlob);
+
+      reportTab.location.href = pdfUrl;
+      setTimeout(() => URL.revokeObjectURL(pdfUrl), 60_000);
+    } catch (error) {
+      reportTab.close();
+      toast.error(error.response?.data?.message || "Failed to open report");
+    } finally {
+      setIsOpeningFile(false);
+    }
+  }
 
   return (
     <motion.div
@@ -263,14 +293,19 @@ function ReportModal({ report, onClose, onAnalyze, isAnalyzing }) {
 
         {/* File viewer */}
         {report.fileType === "pdf" ? (
-          <a
-            href={getReportViewUrl(report)}
-            target="_blank"
-            rel="noreferrer"
+          <button
+            type="button"
+            onClick={handleOpenPdf}
+            disabled={isOpeningFile}
             className="flex items-center justify-center gap-2 w-full rounded-xl bg-gray-100 py-3 text-sm font-semibold text-gray-700 hover:bg-gray-200 transition"
           >
-            <FileText size={14} /> Open PDF in new tab
-          </a>
+            {isOpeningFile ? (
+              <RefreshCw size={14} className="animate-spin" />
+            ) : (
+              <FileText size={14} />
+            )}
+            {isOpeningFile ? "Opening PDF..." : "Open PDF in new tab"}
+          </button>
         ) : (
           <img src={getReportViewUrl(report)} alt="report" className="w-full rounded-xl border" />
         )}
