@@ -24,10 +24,14 @@ DASHBOARD_SYMPTOM_MAP = {
     "chest_pain": ["chestpain"],
     "shortness_of_breath": ["breathlessness"],
     "sore_throat": ["throatirritation", "patchesinthroat"],
+    "throat_irritation": ["throatirritation"],
     "runny_nose": ["runnynose"],
     "abdominal_pain": ["abdominalpain"],
+    "belly_pain": ["abdominalpain", "bellypain"],
+    "bellypain": ["abdominalpain", "bellypain"],
     "diarrhea": ["diarrhoea"],
     "muscle_pain": ["musclepain"],
+    "muscle_weakness": ["muscleweakness"],
     "joint_pain": ["jointpain"],
     "back_pain": ["backpain"],
     "skin_rash": ["skinrash"],
@@ -183,8 +187,16 @@ def fallback_predict(symptoms: list[str]) -> list[dict]:
             scores[disease] = scores.get(disease, 0) + max(20, 85 - index * 11)
 
     if not scores:
-        fallback = ["Viral Infection", "Bacterial Infection", "Autoimmune Disorder", "Metabolic Syndrome", "Inflammatory Condition"]
-        scores = {disease: 85 - index * 11 for index, disease in enumerate(fallback)}
+        return [
+            {
+                "disease": "Unknown",
+                "confidence": 5,
+                "probability": 0.05,
+                "rank": 1,
+                "percentage": "5%",
+                "message": "No recognized symptoms were matched. Please select symptoms from the list or try common symptom names.",
+            }
+        ]
 
     max_score = max(scores.values())
     predictions = [

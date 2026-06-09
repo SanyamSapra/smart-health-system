@@ -150,6 +150,8 @@ const DiseasePredictionTool = ({ compact = false }) => {
   const [prediction, setPrediction] = useState(null);
   const [loading, setLoading] = useState(false);
   const [healthContext, setHealthContext] = useState(null);
+  const matchedSymptoms = prediction?.matchedSymptoms || prediction?.predictionMeta?.matchedSymptoms || prediction?.predictionMeta?.modelSymptoms || [];
+  const unmatchedInputs = prediction?.unmatchedInputs || prediction?.predictionMeta?.unmatchedSymptoms || [];
 
   useEffect(() => {
     let mounted = true;
@@ -428,11 +430,11 @@ const DiseasePredictionTool = ({ compact = false }) => {
             <div className="mt-4 grid grid-cols-1 gap-2 text-xs text-blue-700 md:grid-cols-2">
               <div className="rounded-xl bg-white/70 p-3">
                 <span className="font-bold">Matched symptoms: </span>
-                {(prediction.predictionMeta.modelSymptoms || []).slice(0, 8).join(", ") || "None reported"}
+                {matchedSymptoms.slice(0, 8).join(", ") || "None reported"}
               </div>
               <div className="rounded-xl bg-white/70 p-3">
                 <span className="font-bold">Unmatched inputs: </span>
-                {(prediction.predictionMeta.unmatchedSymptoms || []).slice(0, 8).join(", ") || "None"}
+                {unmatchedInputs.slice(0, 8).join(", ") || "None"}
               </div>
               <div className="rounded-xl bg-white/70 p-3">
                 <span className="font-bold">Context-added signals: </span>

@@ -8,6 +8,10 @@ import {
   calculateHealthScore,
   getTrendMessages,
 } from "../utils/healthInsights.js";
+import {
+  normalizeSymptomKey,
+  resolveSymptomInputs,
+} from "../utils/symptomUtils.js";
 
 const GEMINI_MODEL = "gemini-3-flash-preview";
 const INSIGHTS_CACHE_HOURS = 24;
@@ -159,20 +163,9 @@ function normalizeDiseaseName(name) {
   return typeof name === "string" ? name.trim() : "";
 }
 
-function normalizeSymptomKey(value) {
-  return String(value || "")
-    .trim()
-    .toLowerCase()
-    .replace(/['\-\u2013\u2014_]/g, " ")
-    .replace(/[^a-z0-9 ]/g, "")
-    .replace(/\s+/g, "");
-}
-
 function buildLocalDiseaseFallback(symptoms, extraText, clinicalContext, reason) {
-  const extraSymptoms = extraText
-    ? extraText.split(/[,;]+/).map(normalizeSymptomKey).filter(Boolean)
-    : [];
-  const normalizedSymptoms = [...new Set([...symptoms.map(normalizeSymptomKey), ...extraSymptoms])];
+  const symptomResolution = resolveSymptomInputs(symptoms, extraText);
+  const normalizedSymptoms = symptomResolution.modelSymptoms;
   const scores = new Map();
 
   normalizedSymptoms.forEach((symptom) => {
@@ -182,10 +175,46 @@ function buildLocalDiseaseFallback(symptoms, extraText, clinicalContext, reason)
       scores.set(disease, current + Math.max(10, 50 - index * 7));
     });
   });
+  const hasDiseaseScores = Boolean(scores.size);
 
-  if (!scores.size) {
-    ["Viral Infection", "Bacterial Infection", "Inflammatory Condition", "Allergic Reaction", "Metabolic Syndrome"].forEach(
-      (disease, index) => scores.set(disease, 45 - index * 6)
+  if (!normalizedSymptoms.length) {
+    const predictions = [
+      {
+        disease: "Unknown",
+        confidence: 5,
+        probability: 0.05,
+        rank: 1,
+        percentage: "5%",
+        message: "No recognized symptoms were matched. Please select symptoms from the list or try common symptom names.",
+      },
+    ];
+
+    return {
+      success: true,
+      predictions,
+      topDisease: "Unknown",
+      predictionMeta: {
+        source: "fallback_rules",
+        fallbackReason: reason,
+        inputSymptoms: symptomResolution.inputSymptoms,
+        userSelectedSymptoms: symptoms,
+        modelSymptoms: [],
+        matchedSymptoms: [],
+        approximatedSymptoms: symptomResolution.approximatedSymptoms,
+        unmatchedSymptoms: symptomResolution.unmatchedInputs,
+        contextDerivedSymptoms: [],
+        contextDerivedReasons: [],
+        contextRiskSignals: [],
+        clinicalContext,
+        message: "No compatible symptoms could be matched to the disease model.",
+      },
+      patientContext: clinicalContext,
+    };
+  }
+
+  if (!hasDiseaseScores) {
+    ["Viral Infection", "Inflammatory Condition", "Allergic Reaction"].forEach(
+      (disease, index) => scores.set(disease, 18 - index * 4)
     );
   }
 
@@ -194,7 +223,12 @@ function buildLocalDiseaseFallback(symptoms, extraText, clinicalContext, reason)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 5)
     .map(([disease, score], index) => {
-      const confidence = Math.max(12, Math.min(88, Math.round((score / maxScore) * (78 - index * 5))));
+      const confidenceCeiling = hasDiseaseScores ? 88 : 24;
+      const confidenceBase = hasDiseaseScores ? 12 : 6;
+      const confidence = Math.max(
+        confidenceBase,
+        Math.min(confidenceCeiling, Math.round((score / maxScore) * (78 - index * 5)))
+      );
       return {
         disease,
         confidence,
@@ -211,12 +245,12 @@ function buildLocalDiseaseFallback(symptoms, extraText, clinicalContext, reason)
     predictionMeta: {
       source: "fallback_rules",
       fallbackReason: reason,
-      inputSymptoms: normalizedSymptoms,
+      inputSymptoms: symptomResolution.inputSymptoms,
       userSelectedSymptoms: symptoms,
-      modelSymptoms: [],
-      matchedSymptoms: [],
-      approximatedSymptoms: {},
-      unmatchedSymptoms: normalizedSymptoms,
+      modelSymptoms: normalizedSymptoms,
+      matchedSymptoms: symptomResolution.matchedSymptoms,
+      approximatedSymptoms: symptomResolution.approximatedSymptoms,
+      unmatchedSymptoms: symptomResolution.unmatchedInputs,
       contextDerivedSymptoms: [],
       contextDerivedReasons: [],
       contextRiskSignals: [],
@@ -794,6 +828,14 @@ export const predictDisease = async (req, res) => {
       });
     }
 
+    const symptomResolution = resolveSymptomInputs(symptoms, extraText);
+    console.info("[DiseasePrediction] symptom flow", {
+      rawSymptoms: symptoms,
+      extraTextPresent: Boolean(extraText),
+      modelSymptoms: symptomResolution.modelSymptoms,
+      unmatchedInputs: symptomResolution.unmatchedInputs,
+    });
+
     const context = await getUserHealthContext(req.userId, 30);
     if (!context.user) {
       return res.status(404).json({ success: false, message: "User not found" });
@@ -811,7 +853,7 @@ export const predictDisease = async (req, res) => {
         headers: { "Content-Type": "application/json" },
         signal: controller.signal,
         body: JSON.stringify({
-          symptoms,
+          symptoms: symptomResolution.modelSymptoms.length ? symptomResolution.modelSymptoms : symptoms.map(normalizeSymptomKey),
           extra_text: extraText,
           clinical_context: clinicalContext,
         }),
@@ -839,13 +881,47 @@ export const predictDisease = async (req, res) => {
       clearTimeout(timeout);
     }
 
-    const activeCondition = await saveActiveCondition(context.user, data);
+    if (data?.predictionMeta) {
+      data.predictionMeta = {
+        ...data.predictionMeta,
+        inputSymptoms: data.predictionMeta.inputSymptoms?.length
+          ? data.predictionMeta.inputSymptoms
+          : symptomResolution.inputSymptoms,
+        userSelectedSymptoms: symptoms,
+        modelSymptoms: data.predictionMeta.modelSymptoms?.length
+          ? data.predictionMeta.modelSymptoms
+          : symptomResolution.modelSymptoms,
+        matchedSymptoms: data.predictionMeta.matchedSymptoms?.length
+          ? data.predictionMeta.matchedSymptoms
+          : symptomResolution.matchedSymptoms,
+        approximatedSymptoms: {
+          ...symptomResolution.approximatedSymptoms,
+          ...(data.predictionMeta.approximatedSymptoms || {}),
+        },
+        unmatchedSymptoms: data.predictionMeta.unmatchedSymptoms?.length
+          ? data.predictionMeta.unmatchedSymptoms
+          : symptomResolution.unmatchedInputs,
+      };
+    }
+
+    console.info("[DiseasePrediction] response flow", {
+      source: data?.predictionMeta?.source,
+      topDisease: data?.topDisease,
+      matchedSymptoms: data?.predictionMeta?.matchedSymptoms || [],
+      modelSymptoms: data?.predictionMeta?.modelSymptoms || [],
+      unmatchedSymptoms: data?.predictionMeta?.unmatchedSymptoms || [],
+    });
+
+    const hasRecognizedSymptoms = Boolean(data?.predictionMeta?.modelSymptoms?.length);
+    const activeCondition = hasRecognizedSymptoms ? await saveActiveCondition(context.user, data) : null;
 
     return res.json({
       success: true,
       data: {
         predictions: data.predictions || [],
         topDisease: data.topDisease,
+        matchedSymptoms: data.predictionMeta?.matchedSymptoms || data.predictionMeta?.modelSymptoms || [],
+        unmatchedInputs: data.predictionMeta?.unmatchedSymptoms || [],
         predictionMeta: data.predictionMeta,
         patientContext: data.patientContext || clinicalContext,
         activeCondition,
