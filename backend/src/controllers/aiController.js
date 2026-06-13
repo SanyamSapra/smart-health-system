@@ -1,9 +1,5 @@
 import ai, { hasGeminiKey } from "../config/gemini.js";
 import fetch from "node-fetch";
-import { spawn } from "child_process";
-import { existsSync } from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
 import User from "../models/User.js";
 import HealthLog from "../models/HealthLog.js";
 import {
@@ -12,19 +8,11 @@ import {
   calculateHealthScore,
   getTrendMessages,
 } from "../utils/healthInsights.js";
-import {
-  normalizeSymptomKey,
-  resolveSymptomInputs,
-} from "../utils/symptomUtils.js";
 
 const GEMINI_MODEL = "gemini-3-flash-preview";
 const INSIGHTS_CACHE_HOURS = 24;
 const CHAT_LIMIT_PER_DAY = 10;
 const DISEASE_API_TIMEOUT_MS = Number(process.env.DISEASE_API_TIMEOUT_MS || 45000);
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const PROJECT_ROOT = path.resolve(__dirname, "../../..");
-const PYTHON_MODEL_ROOT = path.resolve(PROJECT_ROOT, "smart-health-project");
-const PYTHON_PREDICT_SCRIPT = path.resolve(PYTHON_MODEL_ROOT, "ml_model", "predict_api.py");
 
 function getDiseasePredictUrl() {
   const configuredUrl = (
@@ -46,42 +34,6 @@ function getDiseasePredictUrl() {
 
 const DISEASE_PREDICT_URL = getDiseasePredictUrl();
 
-function getPythonExecutable() {
-  if (process.env.PYTHON_MODEL_BIN) {
-    return process.env.PYTHON_MODEL_BIN;
-  }
-
-  const venvPython = process.platform === "win32"
-    ? path.join(PYTHON_MODEL_ROOT, ".venv", "Scripts", "python.exe")
-    : path.join(PYTHON_MODEL_ROOT, ".venv", "bin", "python");
-
-  return existsSync(venvPython) ? venvPython : "python";
-}
-
-const FALLBACK_DISEASE_MAP = {
-  fever: ["Malaria", "Typhoid Fever", "Dengue Fever", "Influenza", "COVID-19"],
-  mildfever: ["Influenza", "Viral Infection", "Common Cold", "Dengue Fever", "Malaria"],
-  highfever: ["Dengue Fever", "Malaria", "Typhoid Fever", "Pneumonia", "COVID-19"],
-  chills: ["Malaria", "Dengue Fever", "Influenza", "Typhoid Fever", "Pneumonia"],
-  cough: ["Bronchitis", "Pneumonia", "Asthma", "Tuberculosis", "COVID-19"],
-  breathlessness: ["Asthma", "Pneumonia", "Heart Failure", "COPD", "Anemia"],
-  chestpain: ["Angina Pectoris", "Myocardial Infarction", "GERD", "Pneumonia", "Pulmonary Embolism"],
-  headache: ["Migraine", "Tension Headache", "Hypertension", "Sinusitis", "Viral Infection"],
-  fatigue: ["Anemia", "Hypothyroidism", "Viral Infection", "Sleep Apnea", "Depression"],
-  nausea: ["Gastroenteritis", "Food Poisoning", "Migraine", "Peptic Ulcer", "Appendicitis"],
-  vomiting: ["Gastroenteritis", "Food Poisoning", "Migraine", "Hepatitis A", "Appendicitis"],
-  abdominalpain: ["Appendicitis", "Gastroenteritis", "Peptic Ulcer", "Gallstones", "IBS"],
-  diarrhoea: ["Gastroenteritis", "Food Poisoning", "Cholera", "IBS", "Typhoid Fever"],
-  skinrash: ["Allergic Reaction", "Chickenpox", "Measles", "Dengue Fever", "Eczema"],
-  itching: ["Allergic Reaction", "Eczema", "Fungal Infection", "Jaundice", "Scabies"],
-  jointpain: ["Dengue Fever", "Rheumatoid Arthritis", "Osteoarthritis", "Gout", "Chikungunya"],
-  musclepain: ["Viral Infection", "Dengue Fever", "Influenza", "Fibromyalgia", "Malaria"],
-  weightloss: ["Tuberculosis", "Type 2 Diabetes", "Hyperthyroidism", "Celiac Disease", "Lymphoma"],
-  irregularsugarlevel: ["Type 2 Diabetes", "Type 1 Diabetes", "Metabolic Syndrome", "Hyperthyroidism", "Stress Response"],
-  burningmicturition: ["Urinary Tract Infection", "Kidney Stone", "Urethritis", "Cystitis", "Prostatitis"],
-  continuousfeelofurine: ["Urinary Tract Infection", "Type 2 Diabetes", "Cystitis", "Diabetes Insipidus", "Prostatitis"],
-};
-
 const emptyConditionInsights = {
   disease: "",
   insights: [],
@@ -94,21 +46,11 @@ function getTodayKey() {
   return new Date().toISOString().split("T")[0];
 }
 
-function sendFallbackChat(res, activeCondition = null) {
-  const conditionName = activeCondition?.name?.trim();
-  const reply = conditionName
-    ? `Your latest model result shows ${conditionName} as a possible condition, not a confirmed diagnosis.\nPlease track your symptoms, rest, stay hydrated, and avoid self-medicating.\nIf symptoms persist, worsen, or feel severe, consult a doctor.`
-    : "Please stay hydrated, eat balanced meals, and continue tracking your health regularly.\nIf you feel unwell or your readings stay abnormal, please speak with a doctor.";
-
-  const data = {
-    reply,
-    fallback: true,
-  };
-
-  return res.json({
-    success: true,
-    ...data,
-    data,
+function sendServiceUnavailable(res, message, details = "") {
+  return res.status(503).json({
+    success: false,
+    message,
+    ...(details ? { details } : {}),
   });
 }
 
@@ -196,162 +138,6 @@ function getPredictionConfidence(topDisease, predictions = []) {
 
 function normalizeDiseaseName(name) {
   return typeof name === "string" ? name.trim() : "";
-}
-
-function buildLocalDiseaseFallback(symptoms, extraText, clinicalContext, reason) {
-  const symptomResolution = resolveSymptomInputs(symptoms, extraText);
-  const normalizedSymptoms = symptomResolution.modelSymptoms;
-  const scores = new Map();
-
-  normalizedSymptoms.forEach((symptom) => {
-    const diseases = FALLBACK_DISEASE_MAP[symptom] || [];
-    diseases.forEach((disease, index) => {
-      const current = scores.get(disease) || 0;
-      scores.set(disease, current + Math.max(10, 50 - index * 7));
-    });
-  });
-  const hasDiseaseScores = Boolean(scores.size);
-
-  if (!normalizedSymptoms.length) {
-    const predictions = [
-      {
-        disease: "Unknown",
-        confidence: 5,
-        probability: 0.05,
-        rank: 1,
-        percentage: "5%",
-        message: "No recognized symptoms were matched. Please select symptoms from the list or try common symptom names.",
-      },
-    ];
-
-    return {
-      success: true,
-      predictions,
-      topDisease: "Unknown",
-      predictionMeta: {
-        source: "fallback_rules",
-        fallbackReason: reason,
-        inputSymptoms: symptomResolution.inputSymptoms,
-        userSelectedSymptoms: symptoms,
-        modelSymptoms: [],
-        matchedSymptoms: [],
-        approximatedSymptoms: symptomResolution.approximatedSymptoms,
-        unmatchedSymptoms: symptomResolution.unmatchedInputs,
-        contextDerivedSymptoms: [],
-        contextDerivedReasons: [],
-        contextRiskSignals: [],
-        clinicalContext,
-        message: "No compatible symptoms could be matched to the disease model.",
-      },
-      patientContext: clinicalContext,
-    };
-  }
-
-  if (!hasDiseaseScores) {
-    ["Viral Infection", "Inflammatory Condition", "Allergic Reaction"].forEach(
-      (disease, index) => scores.set(disease, 18 - index * 4)
-    );
-  }
-
-  const maxScore = Math.max(...scores.values(), 1);
-  const predictions = [...scores.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 5)
-    .map(([disease, score], index) => {
-      const confidenceCeiling = hasDiseaseScores ? 88 : 24;
-      const confidenceBase = hasDiseaseScores ? 12 : 6;
-      const confidence = Math.max(
-        confidenceBase,
-        Math.min(confidenceCeiling, Math.round((score / maxScore) * (78 - index * 5)))
-      );
-      return {
-        disease,
-        confidence,
-        probability: Number((confidence / 100).toFixed(4)),
-        rank: index + 1,
-        percentage: `${confidence}%`,
-      };
-    });
-
-  return {
-    success: true,
-    predictions,
-    topDisease: predictions[0]?.disease || "Unknown",
-    predictionMeta: {
-      source: "fallback_rules",
-      fallbackReason: reason,
-      inputSymptoms: symptomResolution.inputSymptoms,
-      userSelectedSymptoms: symptoms,
-      modelSymptoms: normalizedSymptoms,
-      matchedSymptoms: symptomResolution.matchedSymptoms,
-      approximatedSymptoms: symptomResolution.approximatedSymptoms,
-      unmatchedSymptoms: symptomResolution.unmatchedInputs,
-      contextDerivedSymptoms: [],
-      contextDerivedReasons: [],
-      contextRiskSignals: [],
-      clinicalContext,
-    },
-    patientContext: clinicalContext,
-  };
-}
-
-function predictDiseaseWithPythonCli(payload) {
-  return new Promise((resolve, reject) => {
-    const python = getPythonExecutable();
-    const child = spawn(
-      python,
-      [PYTHON_PREDICT_SCRIPT, JSON.stringify(payload)],
-      {
-        cwd: PYTHON_MODEL_ROOT,
-        windowsHide: true,
-      }
-    );
-
-    let stdout = "";
-    let stderr = "";
-    let settled = false;
-
-    const timeout = setTimeout(() => {
-      settled = true;
-      child.kill();
-      reject(new Error("Python trained model CLI timed out."));
-    }, DISEASE_API_TIMEOUT_MS);
-
-    child.stdout.on("data", (chunk) => {
-      stdout += chunk.toString();
-    });
-
-    child.stderr.on("data", (chunk) => {
-      stderr += chunk.toString();
-    });
-
-    child.on("error", (error) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timeout);
-      reject(error);
-    });
-
-    child.on("close", (code) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timeout);
-
-      if (code !== 0) {
-        reject(new Error(stderr.trim() || `Python trained model CLI exited with code ${code}.`));
-        return;
-      }
-
-      try {
-        const jsonStart = stdout.indexOf("{");
-        const jsonText = jsonStart >= 0 ? stdout.slice(jsonStart) : stdout;
-        const parsed = JSON.parse(jsonText);
-        resolve(parsed);
-      } catch (error) {
-        reject(new Error(`Python trained model CLI returned invalid JSON: ${error.message}`));
-      }
-    });
-  });
 }
 
 async function saveActiveCondition(user, predictionData) {
@@ -480,8 +266,10 @@ function getChatPrompt({
     .slice(-7)
     .map(
       (log) =>
-        `${new Date(log.loggedAt).toLocaleDateString("en-IN")}: weight ${log.weight ?? "-"
-        }, BP ${log.systolicBP ?? "-"}/${log.diastolicBP ?? "-"}, sugar ${log.sugarLevel ?? "-"
+        `${new Date(log.loggedAt).toLocaleDateString("en-IN")}: weight ${
+          log.weight ?? "-"
+        }, BP ${log.systolicBP ?? "-"}/${log.diastolicBP ?? "-"}, sugar ${
+          log.sugarLevel ?? "-"
         }`
     )
     .join("\n");
@@ -491,15 +279,17 @@ function getChatPrompt({
 User profile:
 - Age: ${age ?? "Unknown"}
 - Gender: ${user.gender || "Unknown"}
-- Medical conditions: ${user.medicalConditions?.length
+- Medical conditions: ${
+    user.medicalConditions?.length
       ? user.medicalConditions.join(", ")
       : "None mentioned"
-    }
+  }
 
 Latest health data:
 - Weight: ${latestWeight ?? "Not available"} kg
-- Blood pressure: ${latestLog?.systolicBP ?? "N/A"}/${latestLog?.diastolicBP ?? "N/A"
-    } mmHg
+- Blood pressure: ${latestLog?.systolicBP ?? "N/A"}/${
+    latestLog?.diastolicBP ?? "N/A"
+  } mmHg
 - Sugar level: ${latestLog?.sugarLevel ?? "N/A"} mg/dL
 - BMI: ${bmi ?? "Not available"}
 
@@ -654,7 +444,10 @@ export const chatWithAssistant = async (req, res) => {
       : null;
 
     if (!hasGeminiKey || !ai) {
-      return sendFallbackChat(res, activeCondition);
+      return sendServiceUnavailable(
+        res,
+        "AI assistant is unavailable because Gemini is not configured."
+      );
     }
     const result = await ai.models.generateContent({
       model: GEMINI_MODEL,
@@ -673,7 +466,10 @@ export const chatWithAssistant = async (req, res) => {
 
     const reply = result.text?.trim();
     if (!reply) {
-      return sendFallbackChat(res, activeCondition);
+      return sendServiceUnavailable(
+        res,
+        "AI assistant is unavailable because Gemini returned an empty response."
+      );
     }
 
     const data = {
@@ -689,7 +485,11 @@ export const chatWithAssistant = async (req, res) => {
     });
   } catch (error) {
     console.error("AI chat error:", error.message);
-    return sendFallbackChat(res);
+    return sendServiceUnavailable(
+      res,
+      "AI assistant is temporarily unavailable.",
+      error.message
+    );
   }
 };
 
@@ -739,25 +539,10 @@ export const getDashboardInsights = async (req, res) => {
       };
 
       if (!hasGeminiKey || !ai) {
-        context.user.conditionInsights = {
-          disease: activeCondition.name,
-          ...fallbackConditionData,
-          generatedAt: new Date(),
-        };
-        await context.user.save();
-
-        return res.json({
-          success: true,
-          cached: false,
-          data: {
-            disease: context.user.conditionInsights.disease,
-            insights: context.user.conditionInsights.insights || [],
-            tips: context.user.conditionInsights.tips || [],
-            warning: context.user.conditionInsights.warning || "",
-            generatedAt: context.user.conditionInsights.generatedAt,
-            activeCondition,
-          },
-        });
+        return sendServiceUnavailable(
+          res,
+          "AI insights are unavailable because Gemini is not configured."
+        );
       }
 
       const result = await ai.models.generateContent({
@@ -768,11 +553,14 @@ export const getDashboardInsights = async (req, res) => {
         }),
       });
 
-      const parsed = parseInsightsText(
-        result.text?.trim() || "",
-        fallbackConditionData.warning
-      );
-      const savedInsights = parsed || fallbackConditionData;
+      const parsed = parseInsightsText(result.text?.trim() || "", fallbackConditionData.warning);
+      if (!parsed) {
+        return sendServiceUnavailable(
+          res,
+          "AI insights are unavailable because Gemini returned an invalid response."
+        );
+      }
+      const savedInsights = parsed;
 
       context.user.conditionInsights = {
         disease: activeCondition.name,
@@ -836,7 +624,14 @@ export const getDashboardInsights = async (req, res) => {
       warning: buildWarning(context.latestLog),
     };
 
-    if (!hasGeminiKey || !ai || context.logs.length === 0) {
+    if (!hasGeminiKey || !ai) {
+      return sendServiceUnavailable(
+        res,
+        "AI insights are unavailable because Gemini is not configured."
+      );
+    }
+
+    if (context.logs.length === 0) {
       context.user.aiInsights = {
         ...fallbackData,
         generatedAt: new Date(),
@@ -872,7 +667,13 @@ export const getDashboardInsights = async (req, res) => {
     });
 
     const parsed = parseInsightsText(result.text?.trim() || "", fallbackData.warning);
-    const savedInsights = parsed || fallbackData;
+    if (!parsed) {
+      return sendServiceUnavailable(
+        res,
+        "AI insights are unavailable because Gemini returned an invalid response."
+      );
+    }
+    const savedInsights = parsed;
 
     context.user.aiInsights = {
       insights: savedInsights.insights.length ? savedInsights.insights : fallbackData.insights,
@@ -918,14 +719,6 @@ export const predictDisease = async (req, res) => {
       });
     }
 
-    const symptomResolution = resolveSymptomInputs(symptoms, extraText);
-    console.info("[DiseasePrediction] symptom flow", {
-      rawSymptoms: symptoms,
-      extraTextPresent: Boolean(extraText),
-      modelSymptoms: symptomResolution.modelSymptoms,
-      unmatchedInputs: symptomResolution.unmatchedInputs,
-    });
-
     const context = await getUserHealthContext(req.userId, 30);
     if (!context.user) {
       return res.status(404).json({ success: false, message: "User not found" });
@@ -940,102 +733,51 @@ export const predictDisease = async (req, res) => {
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), DISEASE_API_TIMEOUT_MS);
+    let response;
     let data = null;
-    let pythonServiceError = "";
 
     try {
-      const response = await fetch(DISEASE_PREDICT_URL, {
+      console.info("Calling disease prediction service:", DISEASE_PREDICT_URL);
+      response = await fetch(DISEASE_PREDICT_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         signal: controller.signal,
-        body: JSON.stringify({
-          symptoms: symptomResolution.modelSymptoms.length
-            ? symptomResolution.modelSymptoms
-            : symptoms.map(normalizeSymptomKey),
-          extra_text: extraText,
-          clinical_context: clinicalContext,
-        }),
+        body: JSON.stringify(predictionPayload),
       });
 
       data = await response.json().catch(() => null);
-      if (!response.ok || !data?.success) {
-        pythonServiceError =
-          data?.message || `Python service returned HTTP ${response.status}.`;
-        data = null;
-      }
     } catch (error) {
-      pythonServiceError =
-        error.name === "AbortError"
-          ? "Python disease prediction service timed out."
-          : "Python disease prediction service is not reachable.";
+      const details = error.name === "AbortError"
+        ? "Python disease prediction service timed out."
+        : error.message || "Python disease prediction service is not reachable.";
+
+      console.error("Disease prediction service request failed:", details);
+      return res.status(502).json({
+        success: false,
+        message: "Disease prediction service is unavailable. Please start or configure the Python model service.",
+        details,
+      });
     } finally {
       clearTimeout(timeout);
     }
 
-    if (data?.predictionMeta) {
-      data.predictionMeta = {
-        ...data.predictionMeta,
-        inputSymptoms: data.predictionMeta.inputSymptoms?.length
-          ? data.predictionMeta.inputSymptoms
-          : symptomResolution.inputSymptoms,
-        userSelectedSymptoms: symptoms,
-        modelSymptoms: data.predictionMeta.modelSymptoms?.length
-          ? data.predictionMeta.modelSymptoms
-          : symptomResolution.modelSymptoms,
-        matchedSymptoms: data.predictionMeta.matchedSymptoms?.length
-          ? data.predictionMeta.matchedSymptoms
-          : symptomResolution.matchedSymptoms,
-        approximatedSymptoms: {
-          ...symptomResolution.approximatedSymptoms,
-          ...(data.predictionMeta.approximatedSymptoms || {}),
-        },
-        unmatchedSymptoms: data.predictionMeta.unmatchedSymptoms?.length
-          ? data.predictionMeta.unmatchedSymptoms
-          : symptomResolution.unmatchedInputs,
-      };
+    if (!response.ok || !data?.success) {
+      const details = data?.details || data?.message || `Python service returned HTTP ${response.status}.`;
+      console.error("Disease prediction service returned an error:", details);
+      return res.status(response.status === 422 ? 422 : 502).json({
+        success: false,
+        message: data?.message || "Trained disease prediction model failed.",
+        details,
+        source: data?.source || "trained_model",
+        fallbackReason: data?.fallbackReason ?? null,
+      });
     }
 
-    console.info("[DiseasePrediction] response flow", {
-      source: data?.predictionMeta?.source,
-      topDisease: data?.topDisease,
-      matchedSymptoms: data?.predictionMeta?.matchedSymptoms || [],
-      modelSymptoms: data?.predictionMeta?.modelSymptoms || [],
-      unmatchedSymptoms: data?.predictionMeta?.unmatchedSymptoms || [],
-    });
-
-    const hasRecognizedSymptoms = Boolean(
-      data?.predictionMeta?.modelSymptoms?.length
-    );
-    const activeCondition = hasRecognizedSymptoms
-      ? await saveActiveCondition(context.user, data)
-      : null;
-
-    if (!data || data.predictionMeta?.source !== "trained_model") {
-      try {
-        const cliData = await predictDiseaseWithPythonCli(predictionPayload);
-        if (cliData?.predictions?.length) {
-          data = {
-            success: true,
-            predictions: cliData.predictions,
-            rawPredictions: cliData.rawPredictions,
-            topDisease: cliData.predictions[0]?.disease,
-            predictionMeta: {
-              ...cliData.meta,
-              servicePath: data ? "python_cli_after_service_fallback" : "python_cli",
-              pythonServiceError,
-            },
-            patientContext: clinicalContext,
-          };
-        }
-      } catch (error) {
-        if (!data || data.predictionMeta?.source !== "trained_model") {
-          return res.status(502).json({
-            success: false,
-            message: "Trained disease prediction model is unavailable. Please start or configure the Python model service.",
-            details: `${pythonServiceError || "Python disease prediction service failed."} ${error.message}`.trim(),
-          });
-        }
-      }
+    if (!["trained_model", "fallback_rules"].includes(data.source)) {
+      return res.status(502).json({
+        success: false,
+        message: "Disease prediction service returned an invalid prediction source.",
+      });
     }
 
     const activeCondition = await saveActiveCondition(context.user, data);
@@ -1043,11 +785,23 @@ export const predictDisease = async (req, res) => {
     return res.json({
       success: true,
       data: {
+        source: data.source,
+        prediction: data.prediction || data.topDisease,
+        confidence: data.confidence ?? getPredictionConfidence(data.topDisease, data.predictions || []),
+        fallbackReason: data.fallbackReason ?? null,
+        contextAnalysis: data.contextAnalysis || {
+          riskSignals: data.predictionMeta?.contextRiskSignals || [],
+          profile: clinicalContext.profile,
+          latestVitals: clinicalContext.latestVitals,
+          symptomDetails: clinicalContext.symptomDetails,
+        },
         predictions: data.predictions || [],
-        topDisease: data.topDisease,
-        matchedSymptoms: data.predictionMeta?.matchedSymptoms || data.predictionMeta?.modelSymptoms || [],
-        unmatchedInputs: data.predictionMeta?.unmatchedSymptoms || [],
-        predictionMeta: data.predictionMeta,
+        topDisease: data.topDisease || data.prediction,
+        predictionMeta: {
+          ...(data.predictionMeta || {}),
+          source: data.source,
+          fallbackReason: data.fallbackReason ?? data.predictionMeta?.fallbackReason ?? null,
+        },
         patientContext: data.patientContext || clinicalContext,
         activeCondition,
       },
