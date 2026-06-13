@@ -1,5 +1,9 @@
 import ai, { hasGeminiKey } from "../config/gemini.js";
 import fetch from "node-fetch";
+import { spawn } from "child_process";
+import { existsSync } from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
 import User from "../models/User.js";
 import HealthLog from "../models/HealthLog.js";
 import {
@@ -16,12 +20,43 @@ import {
 const GEMINI_MODEL = "gemini-3-flash-preview";
 const INSIGHTS_CACHE_HOURS = 24;
 const CHAT_LIMIT_PER_DAY = 10;
-const DISEASE_API_URL = (
-  process.env.DISEASE_API_URL ||
-  process.env.DISEASE_PREDICTION_API_URL ||
-  "http://localhost:5050"
-).replace(/\/$/, "");
-const DISEASE_API_TIMEOUT_MS = Number(process.env.DISEASE_API_TIMEOUT_MS || 15000);
+const DISEASE_API_TIMEOUT_MS = Number(process.env.DISEASE_API_TIMEOUT_MS || 45000);
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const PROJECT_ROOT = path.resolve(__dirname, "../../..");
+const PYTHON_MODEL_ROOT = path.resolve(PROJECT_ROOT, "smart-health-project");
+const PYTHON_PREDICT_SCRIPT = path.resolve(PYTHON_MODEL_ROOT, "ml_model", "predict_api.py");
+
+function getDiseasePredictUrl() {
+  const configuredUrl = (
+    process.env.DISEASE_API_URL ||
+    process.env.DISEASE_PREDICTION_API_URL ||
+    "http://localhost:5050"
+  ).replace(/\/$/, "");
+
+  if (configuredUrl.endsWith("/api/disease/predict")) {
+    return configuredUrl;
+  }
+
+  if (configuredUrl.endsWith("/api/predict/symptoms")) {
+    return configuredUrl.replace("/api/predict/symptoms", "/api/disease/predict");
+  }
+
+  return `${configuredUrl}/api/disease/predict`;
+}
+
+const DISEASE_PREDICT_URL = getDiseasePredictUrl();
+
+function getPythonExecutable() {
+  if (process.env.PYTHON_MODEL_BIN) {
+    return process.env.PYTHON_MODEL_BIN;
+  }
+
+  const venvPython = process.platform === "win32"
+    ? path.join(PYTHON_MODEL_ROOT, ".venv", "Scripts", "python.exe")
+    : path.join(PYTHON_MODEL_ROOT, ".venv", "bin", "python");
+
+  return existsSync(venvPython) ? venvPython : "python";
+}
 
 const FALLBACK_DISEASE_MAP = {
   fever: ["Malaria", "Typhoid Fever", "Dengue Fever", "Influenza", "COVID-19"],
@@ -260,6 +295,65 @@ function buildLocalDiseaseFallback(symptoms, extraText, clinicalContext, reason)
   };
 }
 
+function predictDiseaseWithPythonCli(payload) {
+  return new Promise((resolve, reject) => {
+    const python = getPythonExecutable();
+    const child = spawn(
+      python,
+      [PYTHON_PREDICT_SCRIPT, JSON.stringify(payload)],
+      {
+        cwd: PYTHON_MODEL_ROOT,
+        windowsHide: true,
+      }
+    );
+
+    let stdout = "";
+    let stderr = "";
+    let settled = false;
+
+    const timeout = setTimeout(() => {
+      settled = true;
+      child.kill();
+      reject(new Error("Python trained model CLI timed out."));
+    }, DISEASE_API_TIMEOUT_MS);
+
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk.toString();
+    });
+
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString();
+    });
+
+    child.on("error", (error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      reject(error);
+    });
+
+    child.on("close", (code) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+
+      if (code !== 0) {
+        reject(new Error(stderr.trim() || `Python trained model CLI exited with code ${code}.`));
+        return;
+      }
+
+      try {
+        const jsonStart = stdout.indexOf("{");
+        const jsonText = jsonStart >= 0 ? stdout.slice(jsonStart) : stdout;
+        const parsed = JSON.parse(jsonText);
+        resolve(parsed);
+      } catch (error) {
+        reject(new Error(`Python trained model CLI returned invalid JSON: ${error.message}`));
+      }
+    });
+  });
+}
+
 async function saveActiveCondition(user, predictionData) {
   const topDisease = normalizeDiseaseName(
     predictionData.topDisease || predictionData.predictions?.[0]?.disease
@@ -386,10 +480,8 @@ function getChatPrompt({
     .slice(-7)
     .map(
       (log) =>
-        `${new Date(log.loggedAt).toLocaleDateString("en-IN")}: weight ${
-          log.weight ?? "-"
-        }, BP ${log.systolicBP ?? "-"}/${log.diastolicBP ?? "-"}, sugar ${
-          log.sugarLevel ?? "-"
+        `${new Date(log.loggedAt).toLocaleDateString("en-IN")}: weight ${log.weight ?? "-"
+        }, BP ${log.systolicBP ?? "-"}/${log.diastolicBP ?? "-"}, sugar ${log.sugarLevel ?? "-"
         }`
     )
     .join("\n");
@@ -399,17 +491,15 @@ function getChatPrompt({
 User profile:
 - Age: ${age ?? "Unknown"}
 - Gender: ${user.gender || "Unknown"}
-- Medical conditions: ${
-    user.medicalConditions?.length
+- Medical conditions: ${user.medicalConditions?.length
       ? user.medicalConditions.join(", ")
       : "None mentioned"
-  }
+    }
 
 Latest health data:
 - Weight: ${latestWeight ?? "Not available"} kg
-- Blood pressure: ${latestLog?.systolicBP ?? "N/A"}/${
-    latestLog?.diastolicBP ?? "N/A"
-  } mmHg
+- Blood pressure: ${latestLog?.systolicBP ?? "N/A"}/${latestLog?.diastolicBP ?? "N/A"
+    } mmHg
 - Sugar level: ${latestLog?.sugarLevel ?? "N/A"} mg/dL
 - BMI: ${bmi ?? "Not available"}
 
@@ -842,18 +932,26 @@ export const predictDisease = async (req, res) => {
     }
 
     const clinicalContext = buildDiseasePredictionContext(context, { duration, severity });
+    const predictionPayload = {
+      symptoms,
+      extra_text: extraText,
+      clinical_context: clinicalContext,
+    };
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), DISEASE_API_TIMEOUT_MS);
     let data = null;
+    let pythonServiceError = "";
 
     try {
-      const response = await fetch(`${DISEASE_API_URL}/api/disease/predict`, {
+      const response = await fetch(DISEASE_PREDICT_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         signal: controller.signal,
         body: JSON.stringify({
-          symptoms: symptomResolution.modelSymptoms.length ? symptomResolution.modelSymptoms : symptoms.map(normalizeSymptomKey),
+          symptoms: symptomResolution.modelSymptoms.length
+            ? symptomResolution.modelSymptoms
+            : symptoms.map(normalizeSymptomKey),
           extra_text: extraText,
           clinical_context: clinicalContext,
         }),
@@ -861,22 +959,15 @@ export const predictDisease = async (req, res) => {
 
       data = await response.json().catch(() => null);
       if (!response.ok || !data?.success) {
-        data = buildLocalDiseaseFallback(
-          symptoms,
-          extraText,
-          clinicalContext,
-          data?.message || `Python service returned HTTP ${response.status}.`
-        );
+        pythonServiceError =
+          data?.message || `Python service returned HTTP ${response.status}.`;
+        data = null;
       }
     } catch (error) {
-      data = buildLocalDiseaseFallback(
-        symptoms,
-        extraText,
-        clinicalContext,
+      pythonServiceError =
         error.name === "AbortError"
           ? "Python disease prediction service timed out."
-          : "Python disease prediction service is not reachable."
-      );
+          : "Python disease prediction service is not reachable.";
     } finally {
       clearTimeout(timeout);
     }
@@ -912,8 +1003,42 @@ export const predictDisease = async (req, res) => {
       unmatchedSymptoms: data?.predictionMeta?.unmatchedSymptoms || [],
     });
 
-    const hasRecognizedSymptoms = Boolean(data?.predictionMeta?.modelSymptoms?.length);
-    const activeCondition = hasRecognizedSymptoms ? await saveActiveCondition(context.user, data) : null;
+    const hasRecognizedSymptoms = Boolean(
+      data?.predictionMeta?.modelSymptoms?.length
+    );
+    const activeCondition = hasRecognizedSymptoms
+      ? await saveActiveCondition(context.user, data)
+      : null;
+
+    if (!data || data.predictionMeta?.source !== "trained_model") {
+      try {
+        const cliData = await predictDiseaseWithPythonCli(predictionPayload);
+        if (cliData?.predictions?.length) {
+          data = {
+            success: true,
+            predictions: cliData.predictions,
+            rawPredictions: cliData.rawPredictions,
+            topDisease: cliData.predictions[0]?.disease,
+            predictionMeta: {
+              ...cliData.meta,
+              servicePath: data ? "python_cli_after_service_fallback" : "python_cli",
+              pythonServiceError,
+            },
+            patientContext: clinicalContext,
+          };
+        }
+      } catch (error) {
+        if (!data || data.predictionMeta?.source !== "trained_model") {
+          return res.status(502).json({
+            success: false,
+            message: "Trained disease prediction model is unavailable. Please start or configure the Python model service.",
+            details: `${pythonServiceError || "Python disease prediction service failed."} ${error.message}`.trim(),
+          });
+        }
+      }
+    }
+
+    const activeCondition = await saveActiveCondition(context.user, data);
 
     return res.json({
       success: true,
