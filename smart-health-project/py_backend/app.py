@@ -1,5 +1,6 @@
 import os
 import time
+import logging
 from datetime import datetime, timezone
 
 from flask import Flask, jsonify, request
@@ -10,6 +11,7 @@ from .predictor import predict_disease
 
 
 START_TIME = time.time()
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 app.config["PORT"] = int(os.getenv("PORT", "5050"))
@@ -66,13 +68,41 @@ def predict():
     if not symptoms and not extra_text.strip():
         return jsonify({"success": False, "message": "At least one symptom is required."}), 400
 
-    prediction_result = predict_disease(symptoms, extra_text, clinical_context)
+    try:
+        prediction_result = predict_disease(symptoms, extra_text, clinical_context)
+    except ValueError as error:
+        logger.warning("Disease prediction rejected: %s", error)
+        return jsonify(
+            {
+                "success": False,
+                "message": str(error),
+                "source": "trained_model",
+                "fallbackReason": None,
+            }
+        ), 422
+    except Exception as error:
+        logger.exception("Trained disease prediction failed.")
+        return jsonify(
+            {
+                "success": False,
+                "message": "Trained disease prediction model failed.",
+                "details": str(error),
+                "source": "trained_model",
+                "fallbackReason": None,
+            }
+        ), 502
+
     predictions = prediction_result["predictions"]
     top_disease = predictions[0]["disease"] if predictions else "Unknown"
 
     return jsonify(
         {
             "success": True,
+            "source": prediction_result["source"],
+            "prediction": prediction_result["prediction"],
+            "confidence": prediction_result["confidence"],
+            "fallbackReason": prediction_result["fallbackReason"],
+            "contextAnalysis": prediction_result["contextAnalysis"],
             "predictions": predictions,
             "rawPredictions": prediction_result["rawPredictions"],
             "topDisease": top_disease,

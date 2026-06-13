@@ -1,4 +1,5 @@
 import json
+import logging
 import sys
 from functools import lru_cache
 from pathlib import Path
@@ -14,6 +15,8 @@ from src.symptom_checker import SymptomChecker
 from src.train_model import REPORT_PATH
 from src.utils import build_symptom_vector, normalise_symptom, parse_manual_input
 
+
+logger = logging.getLogger(__name__)
 
 DASHBOARD_SYMPTOM_MAP = {
     "fever": ["highfever", "mildfever"],
@@ -210,55 +213,6 @@ def fallback_predict(symptoms: list[str]) -> list[dict]:
     return sorted(predictions, key=lambda item: item["confidence"], reverse=True)[:5]
 
 
-def _add_context_symptom(symptoms: list[str], symptom: str, reason: str, reasons: list[dict]) -> None:
-    if symptom not in symptoms:
-        symptoms.append(symptom)
-    reasons.append({"symptom": symptom, "reason": reason})
-
-
-def derive_context_symptoms(clinical_context: dict) -> tuple[list[str], list[dict]]:
-    """
-    Convert compatible profile/vital context into model symptom tokens.
-    The current trained model is symptom-only, so non-symptom fields are used
-    conservatively as extra signals and separately reported in metadata.
-    """
-    symptoms: list[str] = []
-    reasons: list[dict] = []
-    profile = clinical_context.get("profile") or {}
-    vitals = clinical_context.get("latestVitals") or {}
-
-    bmi = vitals.get("bmi")
-    sugar = vitals.get("sugarLevel")
-    systolic = vitals.get("systolicBP")
-    diastolic = vitals.get("diastolicBP")
-
-    if isinstance(bmi, (int, float)) and bmi >= 30:
-        _add_context_symptom(symptoms, "obesity", f"BMI is {bmi}", reasons)
-
-    if isinstance(sugar, (int, float)) and sugar >= 126:
-        _add_context_symptom(symptoms, "irregularsugarlevel", f"Sugar level is {sugar} mg/dL", reasons)
-
-    if isinstance(systolic, (int, float)) and systolic >= 140:
-        _add_context_symptom(symptoms, "headache", f"Systolic BP is {systolic}", reasons)
-        _add_context_symptom(symptoms, "dizziness", f"Systolic BP is {systolic}", reasons)
-    elif isinstance(diastolic, (int, float)) and diastolic >= 90:
-        _add_context_symptom(symptoms, "headache", f"Diastolic BP is {diastolic}", reasons)
-
-    if profile.get("alcohol"):
-        _add_context_symptom(symptoms, "historyofalcoholconsumption", "Alcohol use is listed in profile", reasons)
-
-    for condition in profile.get("medicalConditions") or []:
-        normalized = normalise_symptom(str(condition))
-        if "diabetes" in normalized:
-            _add_context_symptom(symptoms, "irregularsugarlevel", "Diabetes is listed in medical conditions", reasons)
-        if "asthma" in normalized:
-            _add_context_symptom(symptoms, "breathlessness", "Asthma is listed in medical conditions", reasons)
-        if "hypertension" in normalized or "bloodpressure" in normalized:
-            _add_context_symptom(symptoms, "headache", "Hypertension is listed in medical conditions", reasons)
-
-    return _unique(symptoms), reasons
-
-
 def assess_context_risks(clinical_context: dict) -> list[dict]:
     profile = clinical_context.get("profile") or {}
     vitals = clinical_context.get("latestVitals") or {}
@@ -315,36 +269,6 @@ def _format_model_predictions(raw_predictions: list[dict]) -> list[dict]:
     return formatted
 
 
-def _blend_with_clinical_prior(model_predictions: list[dict], prior_predictions: list[dict]) -> list[dict]:
-    scores: dict[str, dict] = {}
-
-    for item in model_predictions:
-        disease = item["disease"]
-        scores[disease] = {
-            **item,
-            "confidence": float(item["confidence"]),
-            "_score": float(item["confidence"]),
-        }
-
-    for item in prior_predictions:
-        disease = item["disease"]
-        current = scores.get(disease, {"disease": disease, "_score": 0})
-        current["_score"] = current.get("_score", 0) + float(item["confidence"]) * 0.65
-        current["confidence"] = max(float(current.get("confidence", 0)), float(item["confidence"]) * 0.65)
-        scores[disease] = current
-
-    blended = sorted(scores.values(), key=lambda item: item["_score"], reverse=True)[:5]
-    for rank, item in enumerate(blended, 1):
-        confidence = round(min(98, max(1, item["_score"])), 1)
-        item["rank"] = rank
-        item["confidence"] = confidence
-        item["probability"] = round(confidence / 100, 4)
-        item["percentage"] = f"{confidence:.1f}%"
-        item.pop("_score", None)
-
-    return blended
-
-
 def predict_with_model(
     symptoms: list[str],
     extra_text: str = "",
@@ -353,9 +277,14 @@ def predict_with_model(
 ) -> dict:
     checker = get_checker()
     clinical_context = clinical_context or {}
-    context_symptoms, context_reasons = derive_context_symptoms(clinical_context)
-    combined_symptoms = _unique(symptoms + context_symptoms)
-    resolution = resolve_symptoms(combined_symptoms, extra_text)
+    resolution = resolve_symptoms(symptoms, extra_text)
+
+    logger.info(
+        "Running trained model prediction: inputs=%d mapped=%d unmatched=%d",
+        len(resolution["inputSymptoms"]),
+        len(resolution["modelSymptoms"]),
+        len(resolution["unmatchedSymptoms"]),
+    )
 
     if not resolution["modelSymptoms"]:
         raise ValueError("No compatible symptoms could be mapped to the trained model.")
@@ -363,20 +292,27 @@ def predict_with_model(
     vector = build_symptom_vector(resolution["modelSymptoms"], checker.get_symptom_list())
     raw_predictions = checker.predict_from_vector(vector, top_n=top_n)
     model_predictions = _format_model_predictions(raw_predictions)
-    prior_predictions = fallback_predict(resolution["inputSymptoms"])
-    predictions = _blend_with_clinical_prior(model_predictions, prior_predictions)
+    context_risks = assess_context_risks(clinical_context)
 
     return {
-        "predictions": predictions,
+        "predictions": model_predictions,
         "rawPredictions": raw_predictions,
+        "source": "trained_model",
+        "prediction": model_predictions[0]["disease"] if model_predictions else "Unknown",
+        "confidence": model_predictions[0]["confidence"] if model_predictions else None,
+        "fallbackReason": None,
+        "contextAnalysis": {
+            "riskSignals": context_risks,
+            "profile": clinical_context.get("profile") or {},
+            "latestVitals": clinical_context.get("latestVitals") or {},
+            "symptomDetails": clinical_context.get("symptomDetails") or {},
+        },
         "meta": {
             **resolution,
             "source": "trained_model",
-            "rankingStrategy": "trained_model_with_clinical_prior",
+            "rankingStrategy": "trained_model_probability",
             "userSelectedSymptoms": symptoms,
-            "contextDerivedSymptoms": context_symptoms,
-            "contextDerivedReasons": context_reasons,
-            "contextRiskSignals": assess_context_risks(clinical_context),
+            "contextRiskSignals": context_risks,
             "clinicalContext": clinical_context,
         },
     }
