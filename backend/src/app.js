@@ -28,6 +28,9 @@ const allowedOrigins = [
 // Basic middleware
 app.use(cors({
   origin(origin, callback) {
+    console.log("CORS Origin:", origin);
+    console.log("Allowed Origins:", allowedOrigins);
+
     if (!origin || allowedOrigins.includes(origin)) {
       return callback(null, true);
     }
