@@ -8,7 +8,6 @@ This repository has been streamlined to contain only the disease prediction mode
 - `disease_prediction_ai/` — model training, symptom normalization, and prediction code
 - `main.py` — application entrypoint
 - `requirements.txt` — trimmed dependency list
-- `ml_model/predict_api.py` — optional CLI wrapper for running prediction from JSON input
 
 ## What was removed
 
@@ -44,6 +43,7 @@ curl -X POST http://localhost:5050/api/disease/predict \
 
 The integrated Node backend expects this service at `http://localhost:5050`.
 Run with the default `python main.py`, or set `DISEASE_API_URL` in the Node backend if you use a different port.
+The Node backend calls this Flask service directly; there is no local CLI prediction fallback.
 
 ## Training the model
 
