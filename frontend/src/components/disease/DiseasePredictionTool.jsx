@@ -437,8 +437,11 @@ const DiseasePredictionTool = ({ compact = false }) => {
                 {unmatchedInputs.slice(0, 8).join(", ") || "None"}
               </div>
               <div className="rounded-xl bg-white/70 p-3">
-                <span className="font-bold">Context-added signals: </span>
-                {(prediction.predictionMeta.contextDerivedSymptoms || []).slice(0, 8).join(", ") || "None"}
+                <span className="font-bold">Context risk checks: </span>
+                {(prediction.contextAnalysis?.riskSignals || prediction.predictionMeta.contextRiskSignals || [])
+                  .slice(0, 3)
+                  .map((risk) => risk.message)
+                  .join("; ") || "None"}
               </div>
               <div className="rounded-xl bg-white/70 p-3">
                 <span className="font-bold">Context used: </span>
