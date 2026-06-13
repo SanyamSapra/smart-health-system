@@ -35,7 +35,8 @@ for d in (DATASET_DIR, MODELS_DIR, SRC_DIR):
 # Common aliases → canonical name
 SYMPTOM_ALIASES: dict[str, str] = {
     "high temperature": "fever",
-    "high fever": "fever",
+    "high fever": "highfever",
+    "mild fever": "mildfever",
     "running nose": "runny_nose",
     "stuffy nose": "nasal_congestion",
     "blocked nose": "nasal_congestion",
